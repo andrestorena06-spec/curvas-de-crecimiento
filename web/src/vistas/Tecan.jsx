@@ -79,7 +79,7 @@ export function ArchivoTecan({ s }) {
           <div className="tarjeta">
             <h2>{crudo ? 'Primeras filas del archivo, tal como se leyeron' : 'Primeras lecturas interpretadas'}</h2>
             <div className="tabla-scroll" style={{ maxHeight: 330 }}>
-              <table className="tabla mono">
+              <table className="tabla mono trabajo">
                 {!crudo && <thead><tr>{previa[0]?.map((c) => <th key={c} className="num">{c}</th>)}</tr></thead>}
                 <tbody>{(crudo ? previa : previa.slice(1)).map((f, i) => <tr key={i}>{f.map((c, j) => <td key={j} className={crudo ? undefined : 'num'}>{String(c).slice(0, 14)}</td>)}</tr>)}</tbody>
               </table>

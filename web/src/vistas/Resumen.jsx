@@ -2,7 +2,7 @@
 // (con un enlace a cada lugar) y los resultados principales. Cada mosaico lleva a su pestaña.
 import { useMemo, useState } from 'react'
 import { finito } from '../motor/analisis.js'
-import { centroLog10, curvaUfc } from '../motor/ufc.js'
+import { centroLog10, centroUfc, curvaUfc, tipValorUfc, valorUfc } from '../motor/ufc.js'
 import { TIPOS, ORIGENES, filasConConteo, filasConOd } from '../modelo.js'
 import { Icono } from '../ui/base.jsx'
 import { BotonCinta, Cinta, Grupo, Mosaico } from '../ui/cinta.jsx'
@@ -71,7 +71,7 @@ export function Resumen({ s }) {
     if (!ufcRes?.hay) return []
     return [...new Set(ufcRes.res.map((r) => r.Muestra))].flatMap((m) => {
       const filas = ufcRes.res.filter((r) => r.Muestra === m && finito(r.log10)).sort((a, b) => a.T_h - b.T_h)
-      const puntos = { id: m, nombre: m, color: s.colores[m], linea: false, puntos: true, forma: 'cuadrado', radio: 3.5, data: filas.map((r) => ({ x: r.T_h, y: centroLog10(r, exp.aj.ufc_centro), tip: `${m} · T = ${r.T_h} h\n${sciCorto(r.UFC_mL)} UFC/mL` })) }
+      const puntos = { id: m, nombre: m, color: s.colores[m], linea: false, puntos: true, forma: 'cuadrado', radio: 3.5, data: filas.map((r) => ({ x: r.T_h, y: centroLog10(r, exp.aj.ufc_centro), tip: [`${m} · T = ${r.T_h} h`, ...tipValorUfc(r, centroUfc(exp.aj), exp.aj.ufc_err)].join('\n') })) }
       const cs = metodoSuave ? curvaUfc(ufcRes, m, exp.aj) : null
       return cs?.ok ? [{ id: 'sv' + m, nombre: '', color: s.colores[m], ancho: 1.6, data: cs.puntos }, puntos] : [puntos]
     })

@@ -16,11 +16,12 @@ Abrir en línea: **https://andrestorena06-spec.github.io/curvas-de-crecimiento/*
 - **Placas por tiempo**: cada placa es un tiempo, con su layout (cepa, blanco y dilución por pocillo) y su Excel; varios Excel a la vez,
   asociación por el tiempo del nombre del archivo, blanco propio o tomado de otra placa, placas ocultas y corrección a 1 cm de camino óptico.
 - **Control de calidad** con exclusión de puntos (Dixon, Grubbs o CV; Hampel en cinéticas) y todo reversible con un clic.
-- **Parámetros**: μmax por ventana deslizante, tiempo de duplicación, lag, K, ΔOD, AUC, fases y modelos (Gompertz, logístico, Richards, Baranyi).
+- **Parámetros**: μmax por ventana deslizante, tiempo de duplicación, lag, K, ΔOD, AUC, fases y modelos (Gompertz, logístico, Richards, Baranyi y Roberts, Huang).
 - **Recuento de UFC**: serie de diluciones con volúmenes transferidos, una dilución por cepa y tiempo (sugerida o elegida a mano),
-  coherencia entre diluciones (prueba binomial), promedio de las réplicas como suma de colonias / suma de volúmenes sembrados
-  (valor de cada tiempo a elegir: media geométrica de las réplicas con DE, EEM o IC 95 % en log₁₀, o Σ colonias / Σ volumen con IC 95 % según el enfoque de ISO 19036) y test de atípicos.
+  coherencia entre diluciones (prueba binomial), UFC/mL de cada réplica (C · D / V) y valor de cada tiempo como media aritmética
+  de las réplicas con DE, EEM o IC 95 % (igual que la OD; en log₁₀, el log₁₀ de la media y de los extremos de la barra) y test de atípicos.
 - **OD + UFC**: ambas curvas con doble eje y calibración OD ↔ UFC/mL.
+- **Formato de publicación**: tablas de resultados de tres líneas y gráficos con ejes de marcas hacia afuera, listos para un informe.
 - **Gráficos personalizables** (textos, tamaños, ejes, colores de las cepas, fondo blanco) y exportación PNG/SVG; tablas a Excel.
 - **Métodos**: descripción completa de los cálculos y texto para el informe.
 - **Resumen** con el avance del análisis y una lista «Para revisar» (avisos con acceso directo a la pantalla que corresponde).

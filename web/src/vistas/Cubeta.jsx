@@ -105,7 +105,7 @@ export function Cubeta({ s }) {
             </div>
             {!filas.length ? <p className="ayuda">Todavía no hay lecturas.</p> : (
               <div className="tabla-scroll">
-                <table className="tabla" ref={planilla} onKeyDown={navegarTabla}>
+                <table className="tabla trabajo" ref={planilla} onKeyDown={navegarTabla}>
                   <thead><tr><th>Cepa</th><th className="num">Réplica</th><th className="num">Tiempo (h)</th>{ks.map((k) => <th key={k} className="num">{etqDil(k, m.factor)}</th>)}<th className="num">OD corregida</th><th>Estado</th><th /></tr></thead>
                   <tbody>{filas.map((x) => {
                     const c = odCorregida(x, m)

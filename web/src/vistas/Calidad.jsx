@@ -8,7 +8,7 @@ import { Campo, Check, Encabezado, Icono, Modal, Num, Seg, Sel, Vacio } from '..
 import { Grafico } from '../ui/grafico.jsx'
 import { LETRAS, fx, ordenPocillo } from '../utils.js'
 import { VistaCalidadPlacas, ZoomTiempo } from './CalidadPlacas.jsx'
-import { ModalFases, ventanaOdElegida, zonasFases } from './FasesCepa.jsx'
+import { ModalFases, tramoOdRige, zonasVentana } from './FasesCepa.jsx'
 import { GrupoMostrar, GrupoTipoError, conEtiquetas, textoMostrar, useMostrar } from '../ui/mostrar.jsx'
 import { mediaPorTiempo } from './Curva.jsx'
 import { BotonCinta, Cajon, Cinta, Grupo, Mosaico, OpcionesCinta, CampoCinta } from '../ui/cinta.jsx'
@@ -265,7 +265,7 @@ function VistaCepas({ s, onAbrir, mo, error }) {
           const mt = mediaPorTiempo((s.pre.proc || []).filter((w) => w.Muestra === m && !w.EsBlanco), (v) => v, error)
           series.push({ id: 'media' + m, nombre: 'Media', color: s.colores[m], linea: false, puntos: !!mo.puntos, radio: 3.6, errores: !!mo.barras,
             etiqueta: conEtiquetas(mo) ? (d) => d.valor : null,
-            data: mt.map((q) => ({ x: q.t / 3600, y: q.m, lo: q.lo, hi: q.hi, key: (() => { const k = `T|${m}|${q.t / 3600}`; claves.set(k, { m, t: q.t / 3600 }); return k })(), valor: textoMostrar(mo, fx(q.m, 3), Number.isFinite(q.hi) ? `± ${fx(q.hi - q.m, 3)}` : ''), tip: `${m}
+            data: mt.map((q) => ({ x: q.t / 3600, y: q.m, lo: q.lo, hi: q.hi, key: (() => { const k = `T|${m}|${q.t / 3600}`; claves.set(k, { m, t: q.t / 3600 }); return k })(), valor: textoMostrar(mo, fx(q.m, 3), Number.isFinite(q.eLin) ? `± ${fx(q.eLin, 3)}` : ''), tip: `${m}
 t = ${fx(q.t / 3600, 2)} h
 media OD = ${fx(q.m, 4)}
 n = ${q.n}` })) })
@@ -274,7 +274,7 @@ n = ${q.n}` })) })
         return (
           <div key={m} className="mosaico">
             <div className="mosaico-cab" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}><h2><i className="punto" style={{ background: s.colores[m], marginRight: 6 }} />{m}</h2>{filasM.length > 0 && <button className="chico fantasma" onClick={() => setFasesDe(m)} data-tip={'Fases de la curva: lag, exponencial y estacionaria\nAmplía la curva para elegir qué puntos forman la fase exponencial'}>Fases…</button>}</div>
-            <Grafico series={series} extras={extras} yTxt="OD" alto={240} zonas={zonasFases(filasM, tiemposM[0], tiemposM[tiemposM.length - 1], false, ventanaOdElegida(s, filasM))} estilo={s.estiloGrafico('cepaCubeta')} idEstilo="cepaCubeta" onPuntoClick={(k) => { const z = claves.get(k); if (z) setZoom(z) }} nombre={`cubeta_${m}`} />
+            <Grafico series={series} extras={extras} yTxt="OD" alto={240} zonas={zonasVentana(tramoOdRige(s, m, filasM).ventana, tiemposM[0], tiemposM[tiemposM.length - 1])} estilo={s.estiloGrafico('cepaCubeta')} idEstilo="cepaCubeta" onPuntoClick={(k) => { const z = claves.get(k); if (z) setZoom(z) }} nombre={`cubeta_${m}`} />
             <div className="fila" style={{ flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
               {reps.map((c) => {
                 const q = qc[c.Pocillo], fuera = s.pre.fuera.has(c.Pocillo)

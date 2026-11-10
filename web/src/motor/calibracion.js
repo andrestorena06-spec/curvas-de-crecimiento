@@ -3,6 +3,7 @@
 // para estimar las UFC/mL a partir de la OD (y viceversa) dentro del rango calibrado.
 // ============================================================
 import { finito, media } from './analisis.js'
+import { tCuantil } from '../utils.js'
 
 export const MODELOS_CALIB = {
   clasico: 'Recta: log₁₀ UFC = m·OD + b',
@@ -74,8 +75,23 @@ export function ajustarCalibracion(pares, modelo) {
   const ml = media(lgOk)
   const sst = lgOk.reduce((s, v) => s + (v - ml) ** 2, 0)
   const sinPred = p.length - iok.length
+  // Error de una predicción: intervalo de predicción 95 % en log₁₀ UFC/mL para una OD x0:
+  //   U = t(0,975; n − k) · σ · √(1 + palanca), con palanca = 1/n + (x0 − x̄)² / Sxx  (x = OD, o log₁₀ OD en el modelo log–log)
+  //   y, en el modelo proporcional (por el origen), x0² / Σ x²
+  // Es exacto en la recta y en el log–log; en el lineal y el proporcional se aplica sobre el error típico en log₁₀ (aproximado).
+  const xs = modelo === 'potencia' ? od.map(Math.log10) : od
+  const mxs = media(xs), sxx = xs.reduce((s, v) => s + (v - mxs) ** 2, 0), sx2 = od.reduce((s, v) => s + v * v, 0)
+  const gl = iok.length - k
+  const tt = gl > 0 ? tCuantil(0.975, gl) : NaN
+  const errorPred = (x0) => {
+    const xq = modelo === 'potencia' ? Math.log10(x0) : x0
+    const pal = modelo === 'proporcional' ? (x0 * x0) / sx2 : 1 / p.length + (xq - mxs) ** 2 / sxx
+    const U = tt * sigma * Math.sqrt(1 + pal)
+    const v = pred(x0)
+    return finito(U) && finito(v) && v > 0 ? { U, lo: v / 10 ** U, hi: v * 10 ** U, tt, pal } : { U: NaN, lo: NaN, hi: NaN, tt, pal }
+  }
   return {
-    ok: true, modelo, n: p.length, nR2: iok.length, sinPred, coef, ecuacion: eq, pred, inv, sigma, R2: sst > 0 ? 1 - sse / sst : NaN,
+    ok: true, modelo, n: p.length, nR2: iok.length, sinPred, coef, ecuacion: eq, pred, inv, sigma, errorPred, gl, R2: sst > 0 ? 1 - sse / sst : NaN,
     rango: [Math.min(...od), Math.max(...od)], rangoUfc: [Math.min(...ufc), Math.max(...ufc)], errorRelPct: (10 ** (finito(sigma) ? sigma : 0) - 1) * 100,
     aviso: sinPred ? `${sinPred} par${sinPred > 1 ? 'es' : ''} con UFC predicha ≤ 0: no entra${sinPred > 1 ? 'n' : ''} en el R² ni en el error típico.` : '',
   }
@@ -94,6 +110,17 @@ export function odDesdeUfc(cal, ufc) {
   if (!finito(flo) || !finito(fhi) || (ufc - flo) * (ufc - fhi) > 0) return NaN
   for (let i = 0; i < 100; i++) { const m = (lo + hi) / 2; if ((f(m) - ufc) * (flo - ufc) > 0) lo = m; else hi = m }
   return (lo + hi) / 2
+}
+
+// Error de la conversión UFC/mL → OD: la incertidumbre U (log₁₀) de las UFC a la OD hallada se lleva a la OD
+// invirtiendo la ecuación en ufc·10^−U y ufc·10^U. Devuelve { od, lo, hi } (lo ≤ hi) o NaN.
+export function odDesdeUfcConError(cal, ufc) {
+  const od = odDesdeUfc(cal, ufc)
+  if (!finito(od) || !cal.errorPred) return { od, lo: NaN, hi: NaN }
+  const { U, tt, pal } = cal.errorPred(od)
+  if (!finito(U)) return { od, lo: NaN, hi: NaN }
+  const a = odDesdeUfc(cal, ufc / 10 ** U), b = odDesdeUfc(cal, ufc * 10 ** U)
+  return finito(a) && finito(b) ? { od, lo: Math.min(a, b), hi: Math.max(a, b), U, tt, pal } : { od, lo: NaN, hi: NaN }
 }
 
 // ¿Una OD está fuera del rango calibrado? (para avisar que es una extrapolación, en los dos sentidos de la conversión)

@@ -359,7 +359,7 @@ table.tabla { border-collapse: separate; border-spacing: 0; width: 100%; font-si
 
 .ficha-tabla-caja.por-replica { max-height: none; }
 .ficha-tabla-caja.por-replica .ficha-tabla th, .ficha-tabla-caja.por-replica .ficha-tabla td { text-align: left; white-space: pre-line; }
-.ficha-tabla-caja.por-replica .ficha-tabla tr:last-child td { font-weight: 700; background: var(--panel2); }
+.ficha-tabla-caja.con-total .ficha-tabla tr:last-child td { font-weight: 700; background: var(--panel2); }
 
 .tabla.tabla-texto td, .tabla.tabla-texto th { white-space: normal; vertical-align: top; }
 .tabla.tabla-texto td:first-child { font-weight: 600; min-width: 150px; }
@@ -379,10 +379,10 @@ h1 { font-size: 26px; }
 .ecuacion-od, .formula { border-left-width: 2px; border-radius: 12px; background: color-mix(in srgb, var(--panel2) 70%, var(--panel)); padding: 14px 18px; }
 .ec-cepa { border-radius: 14px; padding: 18px 22px 20px; box-shadow: 0 1px 6px rgba(65, 36, 2, .05); }
 .ec-cepa h3 { font-size: 16px; }
-.ec-sub { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--tenue); font-weight: 600; }
+.ec-sub { font-size: 13px; color: var(--tenue); font-weight: 600; }
 .ec-conv { border-radius: 12px; background: var(--panel); }
 .ec-res { font-size: 20px; }
-.tabla th { font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; padding: 11px 14px; color: var(--tenue); background: color-mix(in srgb, var(--panel2) 60%, var(--panel)); }
+.tabla th { font-size: 13px; padding: 11px 14px; color: var(--sec); background: color-mix(in srgb, var(--panel2) 60%, var(--panel)); }
 .tabla td { padding: 11px 14px; font-size: 14.5px; }
 .tabla tbody tr:nth-child(even) td { background: transparent; }
 .tabla td[data-tip] { text-decoration: none; }
@@ -391,3 +391,33 @@ h1 { font-size: 26px; }
 .tabla small.ayuda { color: var(--tenue); font-size: 12px; margin-left: 2px; }
 .tabla-scroll { border-radius: 12px; }
 .cinta-boton { font-size: 12.5px; }
+
+/* ============================================================
+   Formato de publicación (el mismo de Biofilm)
+   - Tablas de resultados de tres líneas: filete grueso arriba y abajo, uno fino bajo el encabezado; sin rayado ni marco.
+   - Negrita solo en los títulos y en el resultado de cada cuenta; los encabezados y rótulos van en peso medio.
+   - Las tablas de carga de datos (.trabajo) conservan su marco y su rayado: son herramientas, no figuras.
+   ============================================================ */
+.tabla-scroll:has(> table.tabla:not(.trabajo)) { border: 0; border-radius: 0; background: transparent; }
+table.tabla:not(.trabajo) { border-collapse: collapse; border-top: 1.5px solid var(--texto); border-bottom: 1.5px solid var(--texto); font-variant-numeric: tabular-nums; }
+.tabla:not(.trabajo) th { background: var(--panel); color: var(--texto); font-weight: 500; border-bottom: .8px solid var(--texto); }
+.tabla:not(.trabajo) td { border-bottom: 0; }
+.tabla:not(.trabajo) tbody tr:nth-child(even) td { background: transparent; }
+.tabla:not(.trabajo) tbody tr:hover td { background: var(--hover); }
+.tabla:not(.trabajo) tfoot th, .tabla:not(.trabajo) tfoot td { background: transparent; border-top: .8px solid var(--texto); font-weight: 400; }
+.tabla.trabajo th { font-weight: 500; }
+.tabla td b, .tabla td strong { font-weight: 500; }
+.tabla.tabla-texto td:first-child { font-weight: 500; }
+
+.ficha-tabla th, .ficha-tabla td:first-child, .ficha-tabla th:first-child { font-weight: 500; }
+.ficha-tabla-caja { border: 0; border-radius: 0; border-top: 1.5px solid var(--texto); border-bottom: 1.5px solid var(--texto); }
+.ficha-tabla th { background: var(--panel); border-bottom: .8px solid var(--texto); }
+.ficha-tabla td { border-top: 0; }
+.ficha-tabla tfoot td, .ficha-tabla-caja.con-total .ficha-tabla tr:last-child td { font-weight: 600; color: var(--acento-fuerte); background: transparent; border-top: .8px solid var(--texto); }
+.ficha-valor { font-weight: 600; }
+.ficha-n, .etapa > .titulo-etapa .n { font-weight: 600; }
+.ficha-formula .var { font-weight: 500; }
+.ec-sub, .ec-conv-et { font-weight: 500; }
+.metodos li > b:first-child, .metodos p > b:first-child { font-weight: 600; }
+.metodos b { font-weight: 500; }
+.dil-col b, .rep-tarjeta b { font-weight: 500; }

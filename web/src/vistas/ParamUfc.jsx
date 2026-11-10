@@ -26,6 +26,21 @@ export function GrupoModeloUfc({ s }) {
   return (
     <Grupo titulo="Modelo">
       <OpcionesCinta valor={s.exp.aj.ufc_suave === false ? 'no' : modeloUfc(s.exp.aj)} onChange={(x) => s.upd((e) => ({ aj: { ...e.aj, ufc_suave: x !== 'no', ...(x !== 'no' ? { ufc_modelo: x } : {}) } }))} opciones={OPCIONES_MODELO_UFC} />
+      {modeloUfc(s.exp.aj) !== 'lineal' && s.exp.aj.ufc_suave !== false && <CampoCinta etiqueta="Lag fijo (h)" tip={'Fijar el lag λ (horas) en el ajuste: estabiliza μ cuando hay pocos puntos, porque μ y el lag se compensan entre sí\nVacío: lo estima el ajuste'}><Num value={s.exp.aj.ufc_lagfijo ?? ''} onChange={(x) => s.setAj('ufc_lagfijo', x === '' ? '' : x)} ancho={52} /></CampoCinta>}
+    </Grupo>
+  )
+}
+// el MISMO modelo (aj.ufc_modelo) rige las fases de las UFC: se elige también en la Revisión de los recuentos y en la calibración
+export function GrupoModeloFasesUfc({ s }) {
+  const aj = s.exp.aj
+  const opciones = [
+    ['lineal', 'Linealizar log₁₀', '⟋', null, 'Las fases son las que elegís a mano en «Fases…» (o la ventana de mayor pendiente, automática)'],
+    ['baranyi', 'Baranyi y Roberts', '∫', null, 'Las fases las fija el modelo: exponencial = velocidad de crecimiento ≥ la fracción elegida de μ máx\nEl tramo a mano no se usa'],
+    ['huang', 'Huang', 'H', null, 'Las fases las fija el modelo: exponencial = velocidad de crecimiento ≥ la fracción elegida de μ máx\nEl tramo a mano no se usa'],
+  ]
+  return (
+    <Grupo titulo="Modelo de las fases">
+      <OpcionesCinta valor={modeloUfc(aj)} onChange={(x) => s.upd((e) => ({ aj: { ...e.aj, ufc_suave: true, ufc_modelo: x } }))} opciones={opciones} />
     </Grupo>
   )
 }
@@ -37,7 +52,7 @@ export function GruposOpcionesModeloUfc({ s }) {
   const setPred = (k, x) => s.upd((e) => ({ aj: { ...e.aj, ufc_pred: { ...predDe(e.aj), [k]: x } } }))
   return (<>
     <Grupo titulo="Puntos del ajuste">
-      <OpcionesCinta valor={aj.ufc_datos === 'replicas' ? 'replicas' : 'medias'} onChange={(x) => s.setAj('ufc_datos', x)} opciones={[['medias', 'Valor de cada tiempo', 'x̄', null, 'Ajustar al valor de cada tiempo (Σ C / Σ V o media geométrica, según «Valor de cada tiempo» en Curva UFC vs t)'], ['replicas', 'Cada réplica', '⋮', null, 'Ajustar a cada réplica incluida (todas las observaciones)']]} />
+      <OpcionesCinta valor={aj.ufc_datos === 'replicas' ? 'replicas' : 'medias'} onChange={(x) => s.setAj('ufc_datos', x)} opciones={[['medias', 'Valor de cada tiempo', 'x̄', null, 'Ajustar al valor de cada tiempo: log de la media de las UFC/mL de las réplicas'], ['replicas', 'Cada réplica', '⋮', null, 'Ajustar a cada réplica incluida (todas las observaciones)']]} />
     </Grupo>
     {modeloUfc(aj) !== 'lineal' && (
       <Grupo titulo={MODELOS_UFC[modeloUfc(aj)]}>
@@ -46,7 +61,6 @@ export function GruposOpcionesModeloUfc({ s }) {
           ['10', 'm = 10', 'm₁₀', null, 'Curvatura m = 10: transición más brusca a la fase estacionaria\nDMFit (ComBase) tiene un parámetro de curvatura mCurv: mirá su valor en «Generic control parameters» de DMFit'],
         ]} />}
         {modeloUfc(aj) === 'baranyi' && <CampoCinta etiqueta="m" tip={'Curvatura hacia la meseta (otro valor, > 0)\ny = y₀ + μA − (1/m)·ln[1 + (e^{mμA} − 1)/e^{m(y máx − y₀)}]'}><Num value={aj.ufc_mcurv ?? 1} onChange={(x) => { if (x === '' || x > 0) s.setAj('ufc_mcurv', x === '' ? 1 : x) }} ancho={48} /></CampoCinta>}
-        <CampoCinta etiqueta="Lag fijo (h)" tip={'Fijar el lag λ (horas) en el ajuste: estabiliza μ cuando hay pocos puntos, porque μ y el lag se compensan entre sí\nVacío: lo estima el ajuste'}><Num value={aj.ufc_lagfijo ?? ''} onChange={(x) => s.setAj('ufc_lagfijo', x === '' ? '' : x)} ancho={52} /></CampoCinta>
         <CampoCinta etiqueta="N máx (log₁₀)" tip={'Nivel de la fase estacionaria fijado (por ejemplo, el de otros ensayos en el mismo medio)\nSi tiene un valor, se usa en la tabla, la curva, la predicción y las fases de la calibración\nVacío: lo estima el ajuste. Tiene que ser mayor que el máximo observado.'}><Num value={pred.nmax} onChange={(x) => setPred('nmax', x)} ancho={58} placeholder="auto" /></CampoCinta>
       </Grupo>
     )}
@@ -76,7 +90,7 @@ export function SeccionUfc({ s, muestras }) {
           <tr key={m}><td><i className="punto" style={{ background: s.colores[m], marginRight: 6 }} /><b>{m}</b></td>
             {c.ok ? <>
               {celda(m, c, 'rate', fx(c.rate, 3))}{celda(m, c, 'mu', <>{fs(c.mu, 4)}{finito(c.ee_mu) && <small className="ayuda"> ± {fs(c.ee_mu, 2)}</small>}</>)}{celda(m, c, 'td', fs(c.td_h, 4))}{celda(m, c, 'lag', finito(c.lag_h) ? <>{fs(c.lag_h, 3)}{finito(c.ee_lag) && c.ee_lag > 0 && <small className="ayuda"> ± {fs(c.ee_lag, 2)}</small>}{c.lagFijo && <small className="ayuda"> (fijo)</small>}</> : '–')}
-              {celda(m, c, 'y0', fx(c.y0, 2))}{celda(m, c, 'yEnd', finito(c.yEnd) ? fx(c.yEnd, 2) : c.sinAsintota ? 'sin meseta' : '–', c.sinAsintota ? 'Los recuentos no llegan a la fase estacionaria: la asíntota no se puede estimar.\nFijá N máx (log₁₀) en «Más opciones» o usá el modelo Linealizar log₁₀.' : undefined)}
+              {celda(m, c, 'y0', fx(c.y0, 2))}{celda(m, c, 'yEnd', finito(c.yEnd) ? fx(c.yEnd, 2) : c.sinAsintota ? 'sin meseta' : '–', c.sinAsintota ? 'Los recuentos no llegan a la fase estacionaria: la asíntota no se puede estimar.\nFijá N máx (log₁₀) en la cinta o usá el modelo Linealizar log₁₀.' : undefined)}
               {celda(m, c, 'r2', fx(c.r2, 3))}{celda(m, c, 'se', fx(c.se, 3))}<td className="num">{c.n}</td>
               <td className="num" style={{ color: c.gl <= 1 ? 'var(--aviso)' : undefined }}><Valor f={f(m, c, 'gl')}>{finito(c.gl) ? c.gl : '–'}</Valor>{(c.avisos || []).length > 0 && <span className="aviso-texto" data-tip={c.avisos.join('\n\n')}> ⚠</span>}</td>
               <td className="num"><Valor f={fa(m, c, 'aumento')}>{fx(c.crecimiento_log10, 2)}</Valor></td><td className="num"><Valor f={fa(m, c, 'gen')}>{fx(c.generaciones, 2)}</Valor></td>
@@ -87,7 +101,7 @@ export function SeccionUfc({ s, muestras }) {
       {av.length > 0 && <div className="aviso-caja" style={{ marginTop: 8 }}>{av.map(([m, a], i) => <div key={i}><b>{m}:</b> {a}</div>)}</div>}
       <EcuacionModelo tipo="ufc" nombreArchivo="modelo UFC" nota={`${MODELOS_UFC[modelo]}${modelo === 'baranyi' ? `, curvatura m = ${fs(mc, 3)}${finito(nmaxF) ? `, N máx fijado en ${fx(nmaxF, 2)} log₁₀` : ''}` : ''}, sobre log₁₀(UFC/mL). Es el mismo ajuste de la curva, la predicción y la calibración.`}
         filas={crec.map(({ Muestra, c }) => {
-          const cc = c.ok && c.sinAsintota ? { ok: false, motivo: 'Los recuentos no llegan a la fase estacionaria: la asíntota no se puede estimar. Fijá N máx (log₁₀) en «Más opciones» o usá el modelo Linealizar log₁₀.' } : c
+          const cc = c.ok && c.sinAsintota ? { ok: false, motivo: 'Los recuentos no llegan a la fase estacionaria: la asíntota no se puede estimar. Fijá N máx (log₁₀) en la cinta o usá el modelo Linealizar log₁₀.' } : c
           return { id: Muestra, nombre: Muestra, color: s.colores[Muestra], c: cc }
         })} />
     </div>

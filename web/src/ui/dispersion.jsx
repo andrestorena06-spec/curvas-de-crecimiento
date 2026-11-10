@@ -177,17 +177,18 @@ export function GraficoDispersion(props) {
         {ty.ticks.filter((t) => t >= y0 - 1e-9 && t <= y1 + 1e-9).map((t) => (
           <g key={'y' + t}>
             {e.grilla && <line x1={L} x2={W - R} y1={py(t)} y2={py(t)} stroke={T.grilla} />}
+            <line x1={L - 4} x2={L} y1={py(t)} y2={py(t)} stroke={T.texto} strokeWidth="0.8" />
             <text x={L - 8} y={py(t)} textAnchor="end" dominantBaseline="central" fontSize={e.tamNumeros} fill={T.sec}>{fmtTick(t, ty.paso)}</text>
           </g>
         ))}
         <defs><clipPath id={idClip}><rect x={L} y={TOP - 4} width={W - L - R} height={H - TOP - B + 8} /></clipPath></defs>
-        {e.grilla && vis.map((g, gi) => <line key={'s' + gi} x1={px(g.t)} x2={px(g.t)} y1={TOP} y2={H - B} stroke={T.grilla} strokeDasharray="2 4" />)}
+        {vis.map((g, gi) => <line key={'s' + gi} x1={px(g.t)} x2={px(g.t)} y1={H - B} y2={H - B + 4} stroke={T.texto} strokeWidth="0.8" />)}
         <g clipPath={`url(#${idClip})`}>
           {curvas.map((c) => <polyline key={c.id} points={c.puntos.filter((q) => fin(q.y)).map((q) => `${px(q.x).toFixed(1)},${py(q.y).toFixed(1)}`).join(' ')} fill="none" stroke={c.color} strokeWidth={1.6 * e.grosor} opacity="0.75" />)}
         </g>
         <text x={(L + W - R) / 2} y={H - B + 14 + e.tamNumeros + e.tamEjes} textAnchor="middle" fontSize={e.tamEjes} fill={T.texto}>{xT}</text>
-        <line x1={L} x2={W - R} y1={H - B} y2={H - B} stroke={T.eje} />
-        <line x1={L} x2={L} y1={TOP} y2={H - B} stroke={T.eje} />
+        <line x1={L} x2={W - R} y1={H - B} y2={H - B} stroke={T.texto} strokeWidth="0.9" />
+        <line x1={L} x2={L} y1={TOP} y2={H - B} stroke={T.texto} strokeWidth="0.9" />
         <text transform={`translate(${6 + e.tamEjes * 0.6} ${(TOP + H - B) / 2}) rotate(-90)`} textAnchor="middle" fontSize={e.tamEjes} fill={T.texto}>{yT}</text>
 
         {vis.map((g, gi) => {
@@ -235,7 +236,7 @@ export function GraficoDispersion(props) {
               )
             })}
             {fin(topeG) && etiq.map((x, li) => (
-              <text key={'v' + li} x={px(g.t)} y={py(topeG) - 8 - (etiq.length - 1 - li) * e.tamValores * 1.15} textAnchor="middle" fontSize={e.tamValores} fontWeight="600"
+              <text key={'v' + li} x={px(g.t)} y={py(topeG) - 8 - (etiq.length - 1 - li) * e.tamValores * 1.15} textAnchor="middle" fontSize={e.tamValores} fontWeight="500"
                 fill={x.color} stroke={fondo} strokeWidth="3" paintOrder="stroke">{x.lin}</text>
             ))}
             </g>

@@ -1,16 +1,16 @@
 import { useMemo, useState } from 'react'
 import { PARAMS } from '../ayuda.js'
 import { excelDe } from '../excel.js'
-import { desvio, finito, media } from '../motor/analisis.js'
+import { finito } from '../motor/analisis.js'
 import { odCorregida } from '../motor/odmanual.js'
 import { TIPOS, ORIGENES, VERSION, dilucionesUfc, serieUfc } from '../modelo.js'
 import { APP_VERSION } from '../version.js'
 import { Encabezado, Icono, Vacio } from '../ui/base.jsx'
 import { BotonCinta, CampoCinta, Cinta, Grupo, Mosaico, OpcionesCinta } from '../ui/cinta.jsx'
-import { descargarBlob, signif, tCuantil } from '../utils.js'
+import { descargarBlob, sciCorto, signif } from '../utils.js'
 import { CLAVES_RESUMEN, ajustesOd, resumenPorCepa } from './Parametros.jsx'
 import { crecimientoPorCepa } from './ParamUfc.jsx'
-import { MODELOS_UFC, centroUfc, icUfc, modeloUfc, prediccionUfc } from '../motor/ufc.js'
+import { MODELOS_UFC, errorMediaUfc, estadisticaUfc, modeloUfc, prediccionUfc } from '../motor/ufc.js'
 import { paresOdUfc } from './Combinado.jsx'
 
 const r4 = (x) => (typeof x === 'number' ? (finito(x) ? signif(x, 6) : null) : x)
@@ -67,7 +67,7 @@ export function tablasDe(s) {
     T.push({ id: 'crudos', titulo: exp.origenOd === 'tecan' ? 'OD leída (sin procesar)' : 'OD por serie', nota: exp.origenOd === 'tecan' ? 'Valores tal como vienen del lector.' : exp.origenOd === 'placas' ? 'Ya con el blanco de cada placa restado y multiplicada por el factor de dilución.' : 'OD corregida de la cubeta (blanco y dilución aplicados).',
       columnas: ['Tiempo_h', ...ps.map(nombre)], filas: serie.datos.tiempos.map((t, i) => Object.fromEntries([['Tiempo_h', t / 3600], ...ps.map((p) => [nombre(p), serie.datos.pocillos[p][i]])])) })
   }
-  if (exp.origenOd === 'placas' && serie.extra?.detalle?.length) T.push({ id: 'placas', titulo: 'Lecturas de placas, blanco y dilución', columnas: Object.keys(serie.extra.detalle[0]), filas: serie.extra.detalle })
+  if (exp.origenOd === 'placas' && serie.extra?.detalle?.length) T.push({ id: 'placas', hoja: 'Lecturas de placas', titulo: 'Lecturas de placas, blanco y dilución', columnas: Object.keys(serie.extra.detalle[0]), filas: serie.extra.detalle })
   if (exp.origenOd === 'placas' && serie.extra?.blancos?.length) T.push({ id: 'blancos', titulo: 'Blanco de cada placa', columnas: ['T_h', 'Blanco_tomado_de_T_h', 'Pocillos', 'Media', 'DE'], filas: serie.extra.blancos.map((b) => ({ T_h: b.t, Blanco_tomado_de_T_h: b.origen, Pocillos: (b.pocillos || []).join(' '), Media: b.valor, DE: b.de })) })
   if (exp.origenOd === 'cubeta' && exp.manual.filas.length) {
     T.push({ id: 'cubeta', titulo: 'Lecturas de cubeta', columnas: ['Muestra', 'Replica', 'T_h', ...Array.from({ length: exp.manual.nd }, (_, k) => (k ? `Lectura_1:${exp.manual.factor ** k}` : 'Lectura_sin_diluir')), 'OD_corregida', 'Estado'],
@@ -96,33 +96,31 @@ export function tablasDe(s) {
       : { id: 'parametros', titulo: 'Parámetros por réplica', columnas: ['Pocillo', 'Muestra', 'Replica', ...claves, 'ventana_manual', 'aviso'], filas: res, etiquetas: PARAMS })
     if (s.porCepa) {
       const curvas = s.seriesAn.flatMap((c) => c.t.map((t, i) => ({ Muestra: c.Muestra, T_h: t / 3600, n_pocillos: c.n[i], OD_media: c.y[i], DE: c.sd[i] })))
-      T.push({ id: 'curva_cepa', titulo: 'Curva de cada cepa (media por tiempo)', columnas: ['Muestra', 'T_h', 'n_pocillos', 'OD_media', 'DE'], filas: curvas })
+      T.push({ id: 'curva_cepa', hoja: 'Curva de cada cepa', titulo: 'Curva de cada cepa (media por tiempo)', columnas: ['Muestra', 'T_h', 'n_pocillos', 'OD_media', 'DE'], filas: curvas })
     }
     const modOd = exp.opciones?.['curva.modelo'] || 'baranyi'
     if (modOd === 'baranyi' || modOd === 'huang') {
       const lf = exp.opciones?.['curva.lagfijo'] ?? ''
       const aOd = ajustesOd(s, modOd, [...new Set(res.map((r) => r.Muestra))], lf)
       const filasMod = aOd.filter((a) => a.c?.ok).map((a) => ({ Muestra: a.nombre, Modelo: MODELOS_UFC[modOd], mu_h: a.c.mu, EE_mu_h: a.c.ee_mu, td_h: Math.LN2 / a.c.mu, EE_td_h: a.c.ee_td, lag_h: a.c.lag_h, EE_lag_h: a.c.ee_lag, Lag_fijado: a.c.lagFijo ? 'Sí' : 'No', Correlacion_mu_lag: a.c.corr_mu_lag, OD0_ajustada: 10 ** a.c.y0, ODmax: finito(a.c.yEnd) ? 10 ** a.c.yEnd : null, R2: a.c.r2, EE_ajuste_log10: a.c.se, gl: a.c.gl, Puntos: a.c.n }))
-      if (filasMod.length) T.push({ id: 'od_modelo', titulo: `Modelo de la OD (${MODELOS_UFC[modOd]})`, nota: 'Ajuste no lineal sobre ln(OD) con todos los puntos. EE = error estándar de cada parámetro (matriz de covarianza del ajuste). Correlacion_mu_lag: si es cercana a ±1, μ y el lag no se pueden separar con estos datos.', columnas: Object.keys(filasMod[0]), filas: filasMod })
+      if (filasMod.length) T.push({ id: 'od_modelo', hoja: 'Modelo de la OD', titulo: `Modelo de la OD (${MODELOS_UFC[modOd]})`, nota: 'Ajuste no lineal sobre ln(OD) con todos los puntos. EE = error estándar de cada parámetro (matriz de covarianza del ajuste). Correlacion_mu_lag: si es cercana a ±1, μ y el lag no se pueden separar con estos datos.', columnas: Object.keys(filasMod[0]), filas: filasMod })
     }
     const rs = resumenPorCepa(res)
     const cols = ['Muestra', 'n', 'n_unidad', 'tipo_de_error', 'mu_max_EE_pendiente', ...CLAVES_RESUMEN.flatMap((k) => (k === 'r2' ? ['r2_min', 'r2_n'] : [`${k}_media`, `${k}_DE`, `${k}_IC95`, `${k}_n`]))]
-    T.push({ id: 'resumen', titulo: 'Resumen por cepa (media, DE, semiancho del IC 95 %)',
+    T.push({ id: 'resumen', hoja: 'Resumen por cepa', titulo: 'Resumen por cepa (media, DE, semiancho del IC 95 %)',
       nota: 'n = réplicas técnicas (pocillos o series) de UN experimento, o pocillos por tiempo si hay una sola curva por cepa (placas por tiempo; allí el único error es el EE de la pendiente de μmax). <param>_n = valores que entraron en cada media. td_h = ln 2 / μ medio (no el promedio de los td; su DE e IC se propagan de los de μmax). r2_min = el R² más bajo de las réplicas (el R² no se promedia). Con n < 3 la DE y el IC 95 % tienen muy poca base.', columnas: cols,
       filas: rs.map((r) => ({ Muestra: r.Muestra, n: r.nTxt, n_unidad: r.unico ? `${r.unidad} (una curva por cepa, ${r.n_lecturas} lecturas)` : `${r.unidad} técnicas`, tipo_de_error: r.unico ? 'EE de la pendiente (solo μmax)' : 'DE entre réplicas', mu_max_EE_pendiente: r.unico ? r.se_mu : null, ...Object.fromEntries(CLAVES_RESUMEN.flatMap((k) => (k === 'r2' ? [['r2_min', r[k].m], ['r2_n', r[k].n]] : [[`${k}_media`, r[k].m], [`${k}_DE`, r[k].sd], [`${k}_IC95`, r[k].ic], [`${k}_n`, r[k].n]]))) })) })
   }
   if (ufcRes?.hay) {
-    T.push({ id: 'ufc_rep', titulo: 'UFC/mL por réplica', columnas: ['Muestra', 'T_h', 'Replica', 'Diluciones_usadas', 'Colonias_usadas', 'UFC_mL', ...(centroUfc(exp.aj) === 'geo' ? [] : ['IC95_inf', 'IC95_sup']), 'log10', 'Estado', 'Incluida'],
+    T.push({ id: 'ufc_rep', titulo: 'UFC/mL por réplica', columnas: ['Muestra', 'T_h', 'Replica', 'Diluciones_usadas', 'Colonias_usadas', 'UFC_mL', 'log10', 'Estado', 'Incluida'],
       filas: ufcRes.reps.filter((r) => r.Conteos > 0).map((r) => ({ ...r, Incluida: ufcRes.fuera.has(`${r.Muestra}|${r.T_h}|${r.Replica}`) ? 'No' : 'Sí' })) })
-    const tablaPool = { id: 'ufc_res', titulo: 'UFC/mL por cepa y tiempo (Σ colonias / Σ volumen sembrado)', columnas: ['Muestra', 'T_h', 'N', 'Colonias_suma', 'Volumen_mL', 'UFC_mL', 'IC95_inf', 'IC95_sup', 'u_poisson_log10', 'u_oper_log10', 'u_oper_estimada_log10', 'u_oper_defecto_log10', 'u_comb_log10', 'U_expandida_log10', 'k', 'log10', 'DE_log10', 'Media_geometrica', 'CV_pct', 'Estado'], nota: 'IC95_inf / IC95_sup = 10^(log10 N ± U), con U = k·u_comb y u_comb² = u_poisson² + u_oper² (enfoque de ISO 19036, k = 2). u_poisson = 1/(ln10·√Colonias_suma). u_oper = máx(u_oper_defecto, u_oper_estimada), donde u_oper_estimada es la variación entre réplicas (DE de log10) por encima de la de Poisson (vacía con una sola réplica). Todas las u en unidades log10.', filas: ufcRes.res.map((r) => ({ ...r, u_poisson_log10: r.u_poisson, u_oper_log10: r.u_oper, u_oper_estimada_log10: r.u_oper_est, u_oper_defecto_log10: r.u_oper_def, u_comb_log10: r.u_comb, U_expandida_log10: r.U_exp, k: 2 })) }
-    // media geométrica: media de los log10 de las réplicas, con DE, EEM e IC 95 % (t de Student) en log10 y en UFC/mL
-    const filaGeo = (r) => {
-      const lg = (r._vals || []).filter((x) => x > 0).map(Math.log10), n = lg.length, m = n ? media(lg) : NaN
-      const sd = n > 1 ? desvio(lg) : NaN, eem = n > 2 ? sd / Math.sqrt(n) : NaN, h = n > 2 ? tCuantil(0.975, n - 1) * eem : NaN
-      return { Muestra: r.Muestra, T_h: r.T_h, N: n, Media_geometrica: n ? 10 ** m : NaN, log10_media: m, DE_log10: sd, EEM_log10: eem, IC95_log10_inf: m - h, IC95_log10_sup: m + h, IC95_inf: 10 ** (m - h), IC95_sup: 10 ** (m + h), CV_pct: r.CV_pct, Colonias_suma: r.Colonias_suma, Estado: r.Estado }
+    // valor de cada tiempo: media aritmética de las UFC/mL de las réplicas, su error (lineal) y su rango; en log₁₀, el log de la media y de los extremos
+    const filaMedia = (r) => {
+      const est = estadisticaUfc(r), eg = errorMediaUfc(est, exp.aj.ufc_err)
+      return { Muestra: r.Muestra, T_h: r.T_h, N: est.n, Media_UFC_mL: est.m, DE_UFC_mL: est.sd, EEM_UFC_mL: est.sem, IC95_UFC_mL: est.ic, Error_tipo: eg.etq, Error_UFC_mL: eg.e, Rango_inf: eg.lo, Rango_sup: eg.hi, log10_media: eg.mLog, log10_rango_inf: eg.loLog, log10_rango_sup: eg.hiLog, CV_pct: r.CV_pct, Colonias_suma: r.Colonias_suma, Estado: r.Estado }
     }
-    const tablaGeo = { id: 'ufc_res', titulo: 'UFC/mL por cepa y tiempo (media geométrica de las réplicas)', columnas: ['Muestra', 'T_h', 'N', 'Media_geometrica', 'log10_media', 'DE_log10', 'EEM_log10', 'IC95_log10_inf', 'IC95_log10_sup', 'IC95_inf', 'IC95_sup', 'CV_pct', 'Colonias_suma', 'Estado'], nota: 'Para cada réplica UFC/mL = C·D/V; se promedian los log10 y se vuelve a UFC/mL (10^media). N = réplicas con UFC > 0. DE_log10 = desvío muestral (n − 1) de los log10; EEM_log10 = DE/√N; IC95_log10 = media ± t(0,975; N − 1)·EEM_log10 y IC95_inf / IC95_sup = 10^ese intervalo (UFC/mL, asimétrico). EEM e IC95 solo con N ≥ 3.', filas: ufcRes.res.map(filaGeo) }
-    T.push(centroUfc(exp.aj) === 'geo' ? tablaGeo : tablaPool)
+    T.push({ id: 'ufc_res', hoja: 'UFC_mL por cepa y tiempo', titulo: 'UFC/mL por cepa y tiempo (media de las réplicas)', columnas: ['Muestra', 'T_h', 'N', 'Media_UFC_mL', 'DE_UFC_mL', 'EEM_UFC_mL', 'IC95_UFC_mL', 'Error_tipo', 'Error_UFC_mL', 'Rango_inf', 'Rango_sup', 'log10_media', 'log10_rango_inf', 'log10_rango_sup', 'CV_pct', 'Colonias_suma', 'Estado'],
+      nota: 'Para cada réplica UFC/mL = C·D/V (0 si no tuvo colonias en la dilución usada). Media_UFC_mL = media aritmética de las réplicas; DE con n − 1; EEM = DE/√N; IC95_UFC_mL = t(0,975; N − 1)·EEM (semiancho); EEM e IC solo con N ≥ 3. Error_UFC_mL = el error elegido en la Revisión; Rango = media ∓ error. log10_media = log10 de la media; log10_rango = log10 de los extremos del rango.', filas: ufcRes.res.map(filaMedia) })
     const cr = crecimientoPorCepa(ufcRes, exp.aj).map(({ Muestra, c }) => ({ Muestra, Modelo: c.modelo, Puntos: c.n, Tiempos: c.nT, gl: c.gl, curvatura_m: c.mcurv, Convergio: c.convergio === false ? 'No' : 'Sí', Modelo_nombre: MODELOS_UFC[c.modelo], Velocidad_log10_h: c.rate, EE_mu_h: c.ee_mu, EE_lag_h: c.ee_lag, EE_y0_log10: c.ee_y0, EE_ymax_log10: c.ee_ymax, EE_td_h: c.ee_td, Correlacion_mu_lag: c.corr_mu_lag, Lag_fijado: c.lagFijo ? 'Sí' : 'No', Ventana_t0_h: c.modelo === 'lineal' ? c.t0 : null, Ventana_t1_h: c.modelo === 'lineal' ? c.t1 : null, Ventana_ampliada: c.ventanaAmpliada ? 'Sí' : 'No', mu_h: c.mu, td_h: c.td_h, lag_h: c.lag_h, y0_log10: c.y0, yfinal_log10: c.yEnd, R2: c.r2, EE_ajuste_log10: c.se, Aviso: [c.motivo, ...(c.avisos || [])].filter(Boolean).join(' · '), log10_inicio: c.log10_N0, log10_fin: c.log10_fin, aumento_log10: c.crecimiento_log10, generaciones: c.generaciones, aumento_segun: c.aumentoDe === 'modelo' ? 'modelo (primer a último tiempo)' : c.aumentoDe === 'observado' ? 'valores observados' : '' }))
     T.push({ id: 'ufc_crec', titulo: 'Crecimiento por recuento', columnas: Object.keys(cr[0] || { Muestra: 1 }), filas: cr })
     if (exp.aj.ufc_pred?.on) {
@@ -146,11 +144,12 @@ export async function descargarExcel(s, tablas = tablasDe(s)) {
     ...Object.entries(exp.cond).map(([k, v]) => ({ Campo: k, Valor: v })), { Campo: 'Generado', Valor: new Date().toLocaleString('es') }, { Campo: 'Versión de la app', Valor: APP_VERSION },
     ...Object.entries(exp.aj).map(([k, v]) => ({ Campo: `ajuste: ${k}`, Valor: ajTexto(v) })),
   ]
-  const hojas = [{ nombre: 'Experimento', columnas: ['Campo', 'Valor'], filas: info }, ...tablas.map((x) => ({ nombre: x.titulo.slice(0, 31), columnas: x.columnas, filas: x.filas }))]
+  const hojas = [{ nombre: 'Experimento', columnas: ['Campo', 'Valor'], filas: info }, ...tablas.map((x) => ({ nombre: (x.hoja || x.titulo).slice(0, 31), columnas: x.columnas, filas: x.filas }))]
   descargarBlob(await excelDe(hojas), `${exp.nombre.replace(/[^\w\-áéíóúñÁÉÍÓÚÑ ]+/g, '_')} - analisis.xlsx`)
 }
 
-const celda = (v) => (v === null || v === undefined ? '' : typeof v === 'number' ? (Math.abs(v) >= 1e5 || (Math.abs(v) < 1e-3 && v !== 0) ? v.toExponential(3) : String(signif(v, 5)).replace('.', ',')) : String(v))
+// números de la tabla en pantalla: coma decimal; los muy grandes o muy chicos (UFC/mL) en notación compacta 1,507E+5, como en el resto del programa
+const celda = (v) => (v === null || v === undefined ? '' : typeof v === 'number' ? (Math.abs(v) >= 1e4 || (Math.abs(v) < 1e-3 && v !== 0) ? sciCorto(v, 3) : String(signif(v, 5)).replace('.', ',')) : String(v))
 
 export function Datos({ s }) {
   const tablas = useMemo(() => tablasDe(s), [s.pre, s.res, s.ufcRes, s.serie, s.exp]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -175,7 +174,7 @@ export function Datos({ s }) {
         <h2>{t.titulo}</h2>
         {t.nota && <p className="ayuda">{t.nota}</p>}
         {!t.filas.length ? <p className="ayuda">Sin filas.</p> : (
-          <div className="tabla-scroll" style={{ maxHeight: 620 }}><table className="tabla">
+          <div className="tabla-scroll" style={{ maxHeight: 620 }}><table className="tabla trabajo">
             <thead><tr>{t.columnas.map((c) => <th key={c} className={typeof t.filas[0][c] === 'number' ? 'num' : ''} data-tip={t.etiquetas?.[c]}>{c}</th>)}</tr></thead>
             <tbody>{t.filas.slice(0, 2000).map((f, i) => <tr key={i}>{t.columnas.map((c) => <td key={c} className={typeof f[c] === 'number' ? 'num' : ''}>{celda(f[c])}</td>)}</tr>)}</tbody>
           </table></div>

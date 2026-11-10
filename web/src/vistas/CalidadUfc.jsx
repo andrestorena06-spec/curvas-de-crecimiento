@@ -1,4 +1,5 @@
-import { ERRORES_UFC, centroUfc, errorTextoUfc, errorUfc, etiquetaErrorUfc, fasesUfc, metodoCurvaUfc, tramoUfcElegido } from '../motor/ufc.js'
+import { ERRORES_UFC, MODELOS_UFC, ajusteCepaUfc, centroUfc, errorTextoUfc, errorUfc, etiquetaErrorUfc, metodoCurvaUfc, tipValorUfc, tramoUfcRige } from '../motor/ufc.js'
+import { GrupoModeloFasesUfc } from './ParamUfc.jsx'
 import { Grafico } from '../ui/grafico.jsx'
 import { useTema } from '../tema.js'
 import { ModalFases, zonasVentana } from './FasesCepa.jsx'
@@ -21,11 +22,7 @@ const CHIP = { ok: 'ok', bajo: 'aviso', alto: 'aviso', cero: '', incontable: 'pe
 
 // Opciones de cómo se ven los recuentos (las comparten Calidad UFC y Curva UFC vs t)
 export const verUfc = (aj) => ({ puntos: true, medias: true, errores: true, ...(aj.ufc_ver || {}), error: ERRORES_UFC[aj.ufc_err] ? aj.ufc_err : 'sd' })
-// Solo con «media geométrica» (media de log₁₀ de las réplicas). Con Σ C / Σ V la barra es siempre el IC 95 % del conteo.
-// texto del error para los globos: IC del conteo, o ± error de los log₁₀
-export const txtErrorUfc = (e, nombre, f = (v) => fx(v, 2)) => (e.ic ? (finito(e.lo) ? ` · IC 95 % ${f(e.lo)} a ${f(e.hi)}` : '')
-  : finito(e.err) ? ` ± ${f(e.err)} (${nombre})` : finito(e.fac) ? ` ×/÷ ${fx(e.fac, 2)} (${nombre})` : e.nBajo ? ` (con menos de 3 réplicas no hay ${nombre})` : '')
-
+// El valor de cada tiempo es la media de las UFC/mL de las réplicas; el error (DE, EEM o IC 95 %) se elige acá («Tipo de error»).
 export const curvaUfcDe = metodoCurvaUfc
 
 export function CalidadUfc({ s }) {
@@ -66,7 +63,7 @@ export function CalidadUfc({ s }) {
   const nEst = ufcRes.reps.filter((r) => ['bajo', 'alto'].includes(r._estado)).length
   const nombreTest = metodo === 'cv' ? 'CV' : metodo === 'grubbs' ? 'Grubbs' : 'Dixon'
   // fichas: UFC/mL de una réplica, y el test de atípicos de un grupo (con las réplicas que entran al test)
-  const fRep = (r) => () => fichaUfcReplica(r, { dixon: ufcRes.dixon[clave(r)], fuera: ufcRes.fuera.has(clave(r)) })
+  const fRep = (r) => () => fichaUfcReplica(r, { dixon: ufcRes.dixon[clave(r)], fuera: ufcRes.fuera.has(clave(r)), centro: cen, error: ['sd', 'sem', 'ic95'].includes(aj.ufc_err) ? aj.ufc_err : 'sd', grupo: ufcRes.res.find((x) => x.Muestra === r.Muestra && x.T_h === r.T_h) })
   const fAtip = (g) => () => {
     const incluirEst = exp.ufc.estimados !== false, cv = metodo === 'cv'
     const cand = g.reps.filter((x) => finito(x.log10) && (x._estado === 'ok' || (incluirEst && ['bajo', 'alto'].includes(x._estado))) && !exp.ufcExcl.includes(clave(x)))
@@ -74,7 +71,7 @@ export function CalidadUfc({ s }) {
   }
 
   // gráfico: en cada tiempo, una columna por cepa con cada conteo (log₁₀ UFC/mL), la media
-  // (Σ colonias / Σ volúmenes) y su error
+  // (media de las UFC/mL de las réplicas) y su error
   const todas = [...new Set(grupos.map((g) => g.Muestra))]
   const muestras = todas.filter((m) => !cepasOcultas(exp).includes(m))
   const tiempos = [...new Set(grupos.filter((g) => muestras.includes(g.Muestra)).map((g) => g.T_h))].sort((a, b) => a - b)
@@ -88,7 +85,7 @@ export function CalidadUfc({ s }) {
       return {
         id: m + '|' + t, nombre: m, color: s.colores[m], m: e.m, lo: o.errores ? e.lo : NaN, hi: o.errores ? e.hi : NaN,
         valor: textoMostrar(mo, finito(e.m) ? fx(e.m, 2) : '', errorTextoUfc(e, false)),
-        tip: [`${m} · T = ${t} h`, cen === 'geo' ? (finito(r.Media_geometrica) ? `media geométrica = ${sciCorto(r.Media_geometrica)} UFC/mL` : '') : (finito(r.UFC_mL) ? `Σ C / Σ V = ${r.Colonias_suma} / ${sciCorto(r.Volumen_mL)} mL = ${sciCorto(r.UFC_mL)} UFC/mL` : ''), `log₁₀ = ${fx(e.m, 2)}${txtErrorUfc(e, etqErr)}`, 'Detalle del cálculo: clic en el valor, en Curva UFC vs t'].filter(Boolean).join('\n'),
+        tip: [`${m} · T = ${t} h`, ...tipValorUfc(r, cen, o.error), 'Clic en el valor (en Curva UFC vs t): cómo se calculó'].join('\n'),
         pts: ufcRes.reps.filter((x) => x.Muestra === m && x.T_h === t && x.Conteos > 0).map((x) => {
           const st = estadoPunto(x)
           return { y: x.log10, key: clave(x), estado: st,
@@ -117,20 +114,24 @@ export function CalidadUfc({ s }) {
       })
     }
     if (mo.puntos || mo.barras || conEtiquetas(mo)) {
-      series.push({ id: 'media' + m, nombre: cen === 'geo' ? 'Media geométrica' : 'Σ C / Σ V', color, linea: false, puntos: !!mo.puntos, forma: 'cuadrado', radio: 4, errores: !!mo.barras, etiqueta: conEtiquetas(mo) ? (d) => d.valor : null,
+      series.push({ id: 'media' + m, nombre: 'Media', color, linea: false, puntos: !!mo.puntos, forma: 'cuadrado', radio: 4, errores: !!mo.barras, etiqueta: conEtiquetas(mo) ? (d) => d.valor : null,
         data: resM.map((r) => {
           const e = errorUfc(r, 'log10', o.error, cen), key = `T|${m}|${r.T_h}`
           clavesT.set(key, { m, t: r.T_h })
           return { x: r.T_h, y: e.m, lo: e.lo, hi: e.hi, key, valor: textoMostrar(mo, finito(e.m) ? fx(e.m, 2) : '', errorTextoUfc(e, false)),
-            tip: [`${m} · T = ${r.T_h} h`, cen === 'geo' ? (finito(r.Media_geometrica) ? `media geométrica = ${sciCorto(r.Media_geometrica)} UFC/mL` : '') : (finito(r.UFC_mL) ? `Σ C / Σ V = ${r.Colonias_suma} / ${sciCorto(r.Volumen_mL)} mL = ${sciCorto(r.UFC_mL)} UFC/mL` : ''), `log₁₀ = ${fx(e.m, 2)}${txtErrorUfc(e, etqErr)}`, 'Clic: ver las réplicas de ese tiempo'].filter(Boolean).join('\n') }
+            tip: [`${m} · T = ${r.T_h} h`, ...tipValorUfc(r, cen, o.error), 'Clic: ver las réplicas de ese tiempo'].join('\n') }
         }) })
     }
-    // tramo exponencial de las UFC (independiente del de la OD): el elegido o, si no hay, el del ajuste de los recuentos
-    const fz = fasesUfc(ufcRes, m, aj)
-    const ventana = tramoUfcElegido(aj, m) || (fz?.ok && finito(fz.tIni) && finito(fz.tFin) ? [fz.tIni, fz.tFin] : null)
-    datosFases.set(m, { series, extras, tiempos, filas: [], ventana })
+    // tramo exponencial de las UFC (independiente del de la OD): con «Linealizar log₁₀» el elegido a mano (o el automático);
+    // con Baranyi y Roberts o Huang lo fija el modelo
+    const tr = tramoUfcRige(ufcRes, m, aj)
+    const ventana = tr.ventana
+    // en «Fases…» con un modelo se dibuja también su curva
+    const cMod = tr.modelo !== 'lineal' ? ajusteCepaUfc(ufcRes, m, aj) : null
+    const serieModelo = cMod?.ok ? [{ id: 'mod' + m, nombre: MODELOS_UFC[tr.modelo], color, ancho: 2, data: Array.from({ length: 121 }, (_, i) => cMod.t0 + ((cMod.t1 - cMod.t0) * i) / 120).map((x) => ({ x, y: cMod.pred10(x) })) }] : []
+    datosFases.set(m, { series: [...series, ...serieModelo], extras, tiempos, filas: [], ventana, tramo: tr })
     const cuenta = (st) => repsM.filter((x) => estadoPunto(x) === st).length
-    return { m, color, series, extras, tiempos, ventana, nEx: cuenta('fuera'), nEs: cuenta('estimada'), nMa: cuenta('marcada') }
+    return { m, color, series, extras, tiempos, ventana, tramo: tr, nEx: cuenta('fuera'), nEs: cuenta('estimada'), nMa: cuenta('marcada') }
   })
   const lectZoom = ({ m, t }) => ufcRes.reps.filter((x) => x.Muestra === m && x.T_h === t && x.Conteos > 0 && finito(x.log10)).map((x) => {
     const st = estadoPunto(x)
@@ -142,15 +143,16 @@ export function CalidadUfc({ s }) {
   const leyenda = [
     ...(muestras.length > 1 ? muestras.map((m) => ({ texto: m, color: s.colores[m] })) : []),
     { texto: 'Incluida', forma: 'punto' }, { texto: 'Estimada', forma: 'hueco' }, { texto: 'Excluida', forma: 'x' }, { texto: 'Marcada', forma: 'anillo' },
-    ...(o.medias || o.errores ? [{ texto: cen === 'geo' ? `Media geométrica${o.errores ? ` ± ${etqErr}` : ''}` : `Σ C / Σ V${o.errores ? ' e IC 95 %' : ''}`, forma: 'raya' }] : []),
+    ...(o.medias || o.errores ? [{ texto: `Media${o.errores ? ` ± ${etqErr}` : ''}`, forma: 'raya' }] : []),
   ]
 
   return (
     <div className="pagina">
       <Encabezado titulo="Revisión de los recuentos" sub="Revisá qué diluciones entraron en el cálculo de cada réplica, cuáles se estimaron fuera del rango contable y qué réplicas se apartan de las demás." />
       <Cinta>
-        <GrupoMostrar m={mo} set={setMo} notas={{ puntos: 'La raya con el valor de cada cepa en cada tiempo (Σ colonias / Σ volumen, o media geométrica)', replicas: 'Cada conteo como un punto: clic en uno para excluirlo o reincorporarlo', barras: cen === 'geo' ? `Barras de error: ${etqErr} de los log₁₀ de las réplicas` : 'Barras de error: IC 95 % del conteo' }} />
-        <GrupoTipoError valor={o.error} onChange={(x) => s.setAj('ufc_err', x)} fijo={cen !== 'geo'} />
+        <GrupoMostrar m={mo} set={setMo} notas={{ puntos: 'La raya con la media de las UFC/mL de las réplicas de cada cepa en cada tiempo', replicas: 'Cada conteo como un punto: clic en uno para excluirlo o reincorporarlo', barras: `Barras de error: ${etqErr} de las UFC/mL de las réplicas (en log₁₀: log₁₀ de media − error a media + error)` }} />
+        <GrupoTipoError valor={o.error} onChange={(x) => s.setAj('ufc_err', x)} />
+        <GrupoModeloFasesUfc s={s} />
         <Grupo titulo="Método">
           <OpcionesCinta valor={metodo} onChange={(v) => { s.setAj('ufc_atip_metodo', v); s.setAj('ufc_dixon_on', true) }} opciones={[['q', 'Dixon', 'Q', null, METODOS_ATIPICOS.q + '\nSobre log₁₀ UFC/mL de las réplicas de cada cepa y tiempo'], ['grubbs', 'Grubbs', 'G', null, METODOS_ATIPICOS.grubbs + '\nSobre log₁₀ UFC/mL'], ['cv', 'CV %', 'CV', null, METODOS_ATIPICOS.cv + '\nSobre las UFC/mL: si el grupo supera el límite, se señala la réplica más alejada de la media']]} />
         </Grupo>
@@ -184,7 +186,7 @@ export function CalidadUfc({ s }) {
           </div>
         ))}
       </div>
-      <p className="ayuda" style={{ margin: '0 0 14px' }}>Cada punto es una réplica; el cuadrado es el valor de la cepa en ese tiempo ({cen === 'geo' ? 'media geométrica de las réplicas' : 'suma de colonias / suma de volúmenes'}; se elige en Curva UFC vs t) y su barra, {cen === 'geo' ? `la ${ERRORES_UFC[o.error]} de los log₁₀ de las réplicas${o.error !== 'sd' ? ' (no se dibuja con menos de 3 réplicas)' : ''}` : 'su IC 95 % (10^(log₁₀ N ± 2·u_c), con el error de Poisson y el operativo; ISO 19036)'}. Un clic en un punto o en el valor de un tiempo abre sus réplicas acercadas, para excluirlas o reincorporarlas. «Fases…» amplía la curva para elegir el tramo exponencial. Punto lleno: incluida · círculo hueco: estimada (fuera del rango contable) · cruz roja: excluida · anillo naranja: marcada por {nombreTest}, sigue en el promedio. · {ufcRes.reps.filter((r) => r.Conteos > 0).length} réplicas · {nFuera} excluidas · {nEst} estimadas · {Object.keys(ufcRes.dixon).length} marcadas por {nombreTest}</p>
+      <p className="ayuda" style={{ margin: '0 0 14px' }}>Cada punto es una réplica; el cuadrado es el valor de la cepa en ese tiempo (la media de las UFC/mL de las réplicas, en log₁₀) y su barra, de log₁₀(media − {ERRORES_UFC[o.error]}) a log₁₀(media + {ERRORES_UFC[o.error]}), con el error calculado con las UFC/mL{o.error !== 'sd' ? ' (no se dibuja con menos de 3 réplicas)' : ''}. Un clic en un punto o en el valor de un tiempo abre sus réplicas acercadas, para excluirlas o reincorporarlas. «Fases…» amplía la curva para elegir el tramo exponencial. Punto lleno: incluida · círculo hueco: estimada (fuera del rango contable) · cruz roja: excluida · anillo naranja: marcada por {nombreTest}, sigue en el promedio. · {ufcRes.reps.filter((r) => r.Conteos > 0).length} réplicas · {nFuera} excluidas · {nEst} estimadas · {Object.keys(ufcRes.dixon).length} marcadas por {nombreTest}</p>
       {fasesDe && datosFases.get(fasesDe) && <ModalFases s={s} cepa={fasesDe} origen="ufc" yTxt="log₁₀ UFC/mL" {...datosFases.get(fasesDe)} onClose={() => setFasesDe(null)} />}
       {zoom && <ZoomTiempo titulo={`${zoom.m} · T = ${fx(zoom.t, zoom.t % 1 ? 2 : 0)} h`} cepa={zoom.m} colores={s.colores} o={{ puntos: true, medias: false, errores: false, etiquetas: false, mostrar: mo, error: o.error }}
         onClick={(k) => { const r = ufcRes.reps.find((x) => clave(x) === k); if (r) alternar(r) }} estilo={{ ...s.estiloGrafico('exclusion'), yTxt: 'log₁₀ UFC/mL' }} onClose={() => setZoom(null)} lect={lectZoom(zoom)} />}

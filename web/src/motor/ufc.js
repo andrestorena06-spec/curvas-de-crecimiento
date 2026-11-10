@@ -14,7 +14,7 @@
 import { LETRAS, convertirNumero } from './lectura.js'
 import { desvio, finito, interpolar, media, regLineal } from './analisis.js'
 import { baranyiF, erroresAjuste, huangF, levenbergMarquardt } from './modelos.js'
-import { tCuantil } from '../utils.js'
+import { fx, sciCorto, tCuantil } from '../utils.js'
 
 // ---------- parámetros ----------
 export const ufcDef = () => ({
@@ -87,26 +87,6 @@ const colDe = (p) => Number(p.slice(1))
 const filaDe = (p) => p[0]
 export const claveT = (t) => String(Math.round(Number(t) * 1000) / 1000)
 
-// ---------- incertidumbre del recuento (enfoque de ISO 19036), en escala log₁₀ ----------
-// u_poisson: error de contar colonias, 1/(ln 10 · √C) con C = colonias contadas (varianza 0,1886 / C).
-// u_oper: componente operativa y de matriz (pipeteo, diluciones, heterogeneidad de la muestra): el mayor entre un valor por
-//   defecto (aj.ufc_uoper, en log₁₀) y la variación observada entre réplicas por encima de la de Poisson.
-// u_c = √(u_poisson² + u_oper²) · U = k · u_c con k = 2 (≈ 95 %) · IC 95 % = 10^(log₁₀ N ± U), asimétrico en UFC/mL.
-export const K_COB = 2
-export const VAR_POI = 1 / Math.LN10 ** 2
-export const U_OPER_DEF = 0.07
-export const uOperUfc = (aj) => {
-  const x = aj?.ufc_uoper
-  if (x === '' || x === null || x === undefined) return U_OPER_DEF
-  const v = Number(x)
-  return finito(v) && v >= 0 ? v : U_OPER_DEF
-}
-export const uPoisson = (C) => (C > 0 ? Math.sqrt(VAR_POI / C) : NaN)
-export function incertidumbreUfc(x, C, uOper) {
-  const up = uPoisson(C), uc = Math.sqrt(up * up + uOper * uOper), U = K_COB * uc
-  return { u_poisson: up, u_oper: uOper, u_comb: uc, U_exp: U, lo: 10 ** (x - U), hi: 10 ** (x + U) }
-}
-
 // ---------- estimación de UFC/mL de una réplica ----------
 // cont: { k: colonias } (k = columna de la dilución); par: { vol (mL), factor, min, max, D: [dilución total por columna], usar: k elegido a mano }
 // Se usa UNA sola dilución por réplica: la elegida a mano o, si no, la sugerida (ver sugerirDilucion).
@@ -148,7 +128,7 @@ export function sugerirDilucionGrupo(conts, par) {
   return kb
 }
 
-export function estimarUfc(cont, par, uOper = U_OPER_DEF) {
+export function estimarUfc(cont, par) {
   const e = entradas(cont)
   const vacio = { ufc: NaN, lo: NaN, hi: NaN, estado: 'sin_datos', usados: [], S: 0, lim: NaN, sugerida: null, manual: false }
   if (!e.length) return vacio
@@ -163,9 +143,8 @@ export function estimarUfc(cont, par, uOper = U_OPER_DEF) {
   const base = { usados: [k], S: c, sugerida, manual, D }
   if (c === 0) return { ...vacio, ...base, estado: 'cero', lim: 3 / D }   // límite de detección (≈ 3 colonias esperadas)
   if (c > 2 * par.max) return { ...vacio, ...base, estado: 'incontable' }
-  const inc = incertidumbreUfc(Math.log10(c / D), c, uOper)
   const estado = c < par.min ? 'bajo' : c > par.max ? 'alto' : 'ok'
-  return { ufc: c / D, lo: inc.lo, hi: inc.hi, estado, lim: NaN, ...base }
+  return { ufc: c / D, lo: NaN, hi: NaN, estado, lim: NaN, ...base }
 }
 
 
@@ -217,17 +196,16 @@ export const textoEstado = (e) => NOMBRE_ESTADO[e] || e
 // Resultados por réplica y por muestra y tiempo
 export function calcularUfc(u) {
   const regs = registrosConteo(u)
-  const uDef = uOperUfc({ ufc_uoper: u.par?.uoper })
   const reps = regs.map((r) => {
-    const est = estimarUfc(r.cont, r.par, uDef)
+    const est = estimarUfc(r.cont, r.par)
     const n = Object.keys(r.cont).length
     return {
       Muestra: r.Muestra, T_h: r.T_h, Fila: r.Fila || '', Replica: r.Replica, Origen: r.origen, Conteos: n,
       Diluciones_usadas: est.usados.map((k) => `columna ${k + 1} (${r.cont[k]} col.)`).join(', '), Dilucion_elegida: est.manual ? 'a mano' : 'sugerida',
       _manual: est.manual, _sugerida: est.sugerida,
-      UFC_mL: est.ufc, IC95_inf: est.lo, IC95_sup: est.hi, Estado: textoEstado(est.estado), _estado: est.estado,
+      UFC_mL: est.ufc, Estado: textoEstado(est.estado), _estado: est.estado,
       log10: finito(est.ufc) && est.ufc > 0 ? Math.log10(est.ufc) : NaN, Colonias_usadas: est.S, Limite: est.lim,
-      _cont: r.cont, _par: r.par, _uOper: uDef, _usados: est.usados, _S: est.S, _D: est.D,
+      _cont: r.cont, _par: r.par, _usados: est.usados, _S: est.S, _D: est.D,
     }
   })
   const incluirEst = u.par.estimados !== false
@@ -235,36 +213,20 @@ export function calcularUfc(u) {
   const claves = [...new Map(reps.filter((r) => r.Conteos > 0).map((r) => [`${r.Muestra}|${r.T_h}`, [r.Muestra, r.T_h]])).values()]
   claves.forEach(([m, t]) => {
     const g = reps.filter((r) => r.Muestra === m && r.T_h === t)
-    // réplicas que entran al promedio: con la dilución del grupo contada (las de 0 colonias también suman)
+    // réplicas que entran: con la dilución del grupo contada (en rango, o estimadas si se usan estimados)
     const pool = g.filter((r) => finito(r._D) && r._D > 0 && (r._estado === 'ok' || (incluirEst && ['bajo', 'alto', 'cero'].includes(r._estado))))
-    const S = pool.reduce((a, r) => a + r._S, 0)
-    const V = pool.reduce((a, r) => a + r._D, 0)
-    const ufc = pool.length && S > 0 ? S / V : NaN
-    // dispersión entre réplicas (para las barras de DE, el CV y el test de atípicos)
-    const vals = pool.filter((r) => finito(r.UFC_mL) && r.UFC_mL > 0)
-    const lg = vals.map((r) => r.log10)
-    const sdLog = lg.length > 1 ? desvio(lg) : NaN
-    const arit = vals.length ? media(vals.map((r) => r.UFC_mL)) : NaN
-    const sd = vals.length > 1 ? desvio(vals.map((r) => r.UFC_mL)) : NaN
+    // concentración de cada réplica = C · D / V (0 si no tuvo colonias en la dilución usada); el valor del tiempo es su media
+    const vals = pool.map((r) => (r._S > 0 ? r.UFC_mL : 0))
+    const n = vals.length, mm = n ? media(vals) : NaN, sd = n > 1 ? desvio(vals) : NaN
+    const S = pool.reduce((a, r) => a + r._S, 0), V = pool.reduce((a, r) => a + r._D, 0)
     const estados = [...new Set(g.map((r) => r._estado))]
-    // incertidumbre del valor Σ C / Σ V (enfoque de ISO 19036, en log₁₀): u_c² = u_poisson² + u_oper²
-    //   u_poisson² = 0,1886 / ΣC · u_oper = máx(valor por defecto, √(s² − promedio(0,1886 / Cᵢ))), con s = DE de log₁₀ de las réplicas
-    let inc = { u_poisson: NaN, u_oper: NaN, u_comb: NaN, U_exp: NaN, lo: NaN, hi: NaN }
-    let uEst = NaN, vPoi = NaN
-    if (pool.length && S > 0) {
-      vPoi = vals.length ? media(vals.map((r) => VAR_POI / r._S)) : NaN
-      uEst = vals.length > 1 ? Math.sqrt(Math.max(0, sdLog ** 2 - vPoi)) : NaN
-      inc = incertidumbreUfc(Math.log10(ufc), S, Math.max(uDef, finito(uEst) ? uEst : 0))
-    }
     res.push({
-      Muestra: m, T_h: t, Replicas: g.length, Con_conteos: g.filter((r) => r.Conteos > 0).length, N: pool.length,
-      _vals: vals.map((r) => r.UFC_mL), _pool: pool.map((r) => ({ Replica: r.Replica, C: r._S, D: r._D, k: r._usados[0] })),
-      Colonias_suma: pool.length ? S : NaN, Volumen_mL: pool.length ? V : NaN,
-      UFC_mL: ufc, DE: sd, log10: finito(ufc) ? Math.log10(ufc) : NaN, DE_log10: sdLog,
-      IC95_inf: inc.lo, IC95_sup: inc.hi, u_poisson: inc.u_poisson, u_oper: inc.u_oper, u_oper_est: uEst, u_oper_def: uDef, u_comb: inc.u_comb, U_exp: inc.U_exp, Var_poisson_rep: vPoi,
-      Media_geometrica: lg.length ? 10 ** media(lg) : NaN, CV_pct: vals.length > 1 && arit ? (100 * sd) / arit : NaN,
+      Muestra: m, T_h: t, Replicas: g.length, Con_conteos: g.filter((r) => r.Conteos > 0).length, N: n,
+      _vals: vals, _pool: pool.map((r, i) => ({ Replica: r.Replica, C: r._S, D: r._D, k: r._usados[0], ufc: vals[i], estado: r._estado })),
+      Colonias_suma: n ? S : NaN,
+      UFC_mL: mm, DE: sd, log10: mm > 0 ? Math.log10(mm) : NaN, CV_pct: n > 1 && mm > 0 ? (100 * sd) / mm : NaN,
       Estado: estados.includes('ok') && estados.length === 1 ? 'En rango' : estados.map(textoEstado).join(' · '),
-      Limite: pool.length && S === 0 ? 3 / V : NaN,
+      Limite: n && S === 0 ? 3 / V : NaN,
     })
   })
   res.sort((a, b) => (a.Muestra < b.Muestra ? -1 : a.Muestra > b.Muestra ? 1 : a.T_h - b.T_h))
@@ -273,65 +235,79 @@ export function calcularUfc(u) {
   return { reps, res, muestras, ts, hay: reps.some((r) => r.Conteos > 0) }
 }
 
-// ---------- error del valor de un tiempo, para mostrar ----------
-// El error tiene que ser el del MISMO valor que se grafica:
-//   centro 'pool' (Σ C / Σ V, por defecto): el punto es la concentración estimada con todas las colonias, y su error es
-//     el IC 95 % de esa concentración: 10^(log₁₀ N ± 2·u_c), con u_c² = u_poisson² + u_oper² (enfoque de ISO 19036). La dispersión de las
-//     réplicas se ve en sus puntos; no se usa como barra porque es la de otro estimador (la media de los log₁₀).
-//   centro 'geo' (media de log₁₀ de las réplicas = media geométrica): media ± DE, EEM (DE/√n) o IC 95 %
-//     (t(0,975; n − 1) · DE/√n) de los log₁₀. Con menos de 3 réplicas el EEM y el IC no se calculan (nBajo).
-// escala: 'log10' | 'lineal' (en lineal con 'geo' la barra es asimétrica: 10^(media ± error), ×/÷ un factor).
-// Devuelve { m, lo, hi, err, fac, cv, n, ic (true si la barra es un IC del conteo), tipoIc, nBajo }.
+// Resultados sin algunas réplicas (botones de réplica de Curva UFC, como en Curva OD): solo para el gráfico, la media y la
+// tabla; el ajuste de los modelos no cambia. ocultas: lista de `cepa|réplica`.
+export function sinReplicasUfc(ufcRes, ocultas) {
+  if (!ufcRes?.hay || !ocultas?.length) return ufcRes
+  const fuera = new Set(ocultas)
+  const res = ufcRes.res.map((r) => {
+    const pool = (r._pool || []).filter((q) => !fuera.has(`${r.Muestra}|${q.Replica}`))
+    if (pool.length === (r._pool || []).length) return r
+    const vals = pool.map((q) => q.ufc), n = vals.length, mm = n ? media(vals) : NaN, sd = n > 1 ? desvio(vals) : NaN
+    return { ...r, _pool: pool, _vals: vals, N: n, UFC_mL: mm, DE: sd, log10: mm > 0 ? Math.log10(mm) : NaN, CV_pct: n > 1 && mm > 0 ? (100 * sd) / mm : NaN, Colonias_suma: n ? pool.reduce((a, q) => a + q.C, 0) : NaN }
+  })
+  return { ...ufcRes, res, reps: ufcRes.reps.filter((x) => !fuera.has(`${x.Muestra}|${x.Replica}`)) }
+}
+
+// ---------- valor de un tiempo y su error (el MISMO cálculo que la OD) ----------
+// Valor = media aritmética de las UFC/mL de las réplicas. Error = DE, EEM (DE/√n) o IC 95 % (t(0,975; n − 1)·DE/√n),
+// calculado con las UFC/mL (datos lineales). En escala log₁₀: log₁₀ de esa media, y la barra va de log₁₀(media − error)
+// a log₁₀(media + error) (la misma barra que en lineal, con el eje en log). Con menos de 3 réplicas no hay EEM ni IC.
 export const ERRORES_UFC = { sd: 'DE', sem: 'EEM', ic95: 'IC 95 %' }
-export const centroUfc = (aj) => (aj?.ufc_centro === 'geo' ? 'geo' : 'pool')
-// log₁₀ del valor central de una fila de resultados (cepa y tiempo) según el centro elegido
-export const centroLog10 = (r, centro = 'pool') => (centro === 'geo' && finito(r.Media_geometrica) && r.Media_geometrica > 0 ? Math.log10(r.Media_geometrica) : r.log10)
-// IC 95 % que se informa para Σ C / Σ V (y para cada réplica): 10^(log₁₀ N ± 2·u_c)
-export function icUfc(r) {
-  return { lo: r?.IC95_inf, hi: r?.IC95_sup, tipo: finito(r?.IC95_inf) ? 'iso' : '' }
+// (compatibilidad: ya no hay opciones de «valor de cada tiempo»)
+export const centroUfc = () => 'media'
+export const centroLog10 = (r) => r?.log10
+export const valorUfc = (r) => r?.UFC_mL
+export const etiquetaErrorUfc = (centro, tipo) => ERRORES_UFC[tipo] || 'DE'
+// estadísticos de las réplicas de un tiempo: UNA sola fuente para la tabla, las fichas, el Excel y las barras
+export function estadisticaUfc(r) {
+  const v = (r?._vals || []).filter(finito), n = v.length
+  const m = n ? media(v) : NaN, sd = n > 1 ? desvio(v) : NaN, tt = n > 1 ? tCuantil(0.975, n - 1) : NaN
+  const sem = n > 2 ? sd / Math.sqrt(n) : NaN
+  return { n, v, m, sd, sem, tt, ic: n > 2 ? tt * sem : NaN }
 }
-export const TEXTO_IC_UFC = { iso: 'IC 95 % = 10^(log₁₀ N ± 2·u_c), ISO 19036' }
-// nombre corto del error que se dibuja, para leyendas y ejes
-export const etiquetaErrorUfc = (centro, tipo) => (centro === 'geo' ? ERRORES_UFC[tipo] || 'DE' : 'IC 95 %')
-export function errorUfc(r, escala = 'log10', tipo = 'sd', centro = 'pool') {
-  const lin = escala === 'lineal'
-  const vals = (r._vals || []).filter((v) => finito(v) && v > 0)
-  const cv = vals.length > 1 ? (100 * desvio(vals)) / media(vals) : NaN
-  if (centro !== 'geo') {
-    const ic = icUfc(r)
-    const m = lin ? r.UFC_mL : r.log10
-    const de = (v) => (finito(v) && v > 0 ? (lin ? v : Math.log10(v)) : NaN)
-    return { m, lo: de(ic.lo), hi: de(ic.hi), err: NaN, fac: NaN, cv, n: r.N, ic: true, tipoIc: ic.tipo, nBajo: false }
-  }
-  const xs = vals.map(Math.log10)
-  const mLog = centroLog10(r, 'geo')
-  const n = xs.length
-  const sd = n > 1 ? desvio(xs) : NaN
-  // con n = 2, t(0,975; 1) = 12,7: el EEM y el IC no tienen base
-  const nBajo = (tipo === 'sem' || tipo === 'ic95') && n < 3
-  const err = nBajo ? NaN : tipo === 'sem' ? sd / Math.sqrt(n) : tipo === 'ic95' ? (tCuantil(0.975, n - 1) * sd) / Math.sqrt(n) : sd
-  if (lin) {
-    const m = 10 ** mLog
-    return { m, lo: finito(err) ? 10 ** (mLog - err) : NaN, hi: finito(err) ? 10 ** (mLog + err) : NaN, err: NaN, fac: finito(err) ? 10 ** err : NaN, cv, n, ic: false, nBajo }
-  }
-  return { m: mLog, lo: finito(err) ? mLog - err : NaN, hi: finito(err) ? mLog + err : NaN, err, fac: NaN, cv, n, ic: false, nBajo }
+const lg10 = (x) => (finito(x) && x > 0 ? Math.log10(x) : NaN)
+// el error elegido y sus límites, en la magnitud y en log₁₀ (log₁₀ de los extremos)
+export function errorMediaUfc(est, tipo = 'sd') {
+  const t = ERRORES_UFC[tipo] ? tipo : 'sd'
+  const bajo = (t === 'sem' || t === 'ic95') && est.n < 3
+  const e = bajo ? NaN : t === 'sem' ? est.sem : t === 'ic95' ? est.ic : est.sd
+  const lo = est.m - e, hi = est.m + e
+  return { tipo: t, etq: ERRORES_UFC[t], bajo, e, lo, hi, mLog: lg10(est.m), loLog: lg10(lo), hiLog: lg10(hi) }
 }
-// solo el error, para escribirlo sobre el punto: «[lo – hi]» (IC del conteo), «± err» o «×/÷ factor»
+export function errorUfc(r, escala = 'log10', tipo = 'sd') {
+  const est = estadisticaUfc(r), eg = errorMediaUfc(est, tipo)
+  const cv = est.n > 1 && est.m > 0 ? (100 * est.sd) / est.m : NaN
+  if (escala === 'lineal') return { m: est.m, lo: finito(eg.e) ? eg.lo : NaN, hi: finito(eg.e) ? eg.hi : NaN, err: eg.e, rango: false, cv, n: est.n, nBajo: eg.bajo }
+  return { m: eg.mLog, lo: finito(eg.e) ? eg.loLog : NaN, hi: finito(eg.e) ? eg.hiLog : NaN, err: NaN, rango: true, cv, n: est.n, nBajo: eg.bajo }
+}
+// solo el error, para escribirlo sobre el punto: «± error» en lineal; «[log₁₀ inf – log₁₀ sup]» en log₁₀
 export function errorTextoUfc(e, lin) {
   const f = (v) => (lin ? sciUfc(v) : v.toFixed(2).replace('.', ','))
-  if (e.ic) return finito(e.lo) && finito(e.hi) ? `[${f(e.lo)} – ${f(e.hi)}]` : ''
-  if (finito(e.fac)) return `×/÷ ${e.fac.toFixed(2).replace('.', ',')}`
+  if (e.rango) return finito(e.hi) ? `[${finito(e.lo) ? f(e.lo) : '–'} – ${f(e.hi)}]` : ''
   return finito(e.err) ? `± ${f(e.err)}` : ''
 }
-// texto «valor ± error» (o «valor [IC]») para poner sobre el punto
 export function textoErrorUfc(e, lin) {
   const f = (v) => (lin ? sciUfc(v) : v.toFixed(2).replace('.', ','))
   if (!finito(e.m)) return ''
-  if (e.ic) return finito(e.lo) && finito(e.hi) ? `${f(e.m)}\n[${f(e.lo)} – ${f(e.hi)}]` : f(e.m)
-  if (finito(e.fac)) return `${f(e.m)}\n×/÷ ${e.fac.toFixed(2).replace('.', ',')}`
-  return finito(e.err) ? `${f(e.m)}\n± ${f(e.err)}` : f(e.m)
+  const t = errorTextoUfc(e, lin)
+  return t ? `${f(e.m)}\n${t}` : f(e.m)
 }
-const sciUfc = (v) => (finito(v) ? v.toExponential(2).replace('.', ',').replace('e+', 'E+').replace('e-', 'E-') : '–')
+const sciUfc = sciCorto
+// Líneas del globo (tooltip) del valor de una cepa en un tiempo; cada pantalla pone el encabezado y la indicación del clic
+export function tipValorUfc(r, centro, tipo = 'sd') {
+  if (!r) return []
+  const est = estadisticaUfc(r), eg = errorMediaUfc(est, tipo)
+  return lineasMedia({ m: est.m, eg, n: est.n, unidad: 'UFC/mL', fmt: sciCorto, extra: finito(r.Colonias_suma) ? `${r.Colonias_suma} colonias` : '' })
+}
+// texto común de OD y UFC: media (y su log₁₀), error con su rango (y el rango en log₁₀) y n
+export function lineasMedia({ m, eg, n, unidad, fmt, extra = '' }) {
+  const out = [`media = ${fmt(m)} ${unidad} (log₁₀ ${fx(eg.mLog, 3)})`]
+  if (finito(eg.e)) out.push(`${eg.etq} = ± ${fmt(eg.e)} ${unidad}: ${fmt(eg.lo)} a ${fmt(eg.hi)} (log₁₀ ${finito(eg.loLog) ? fx(eg.loLog, 3) : '–'} a ${fx(eg.hiLog, 3)})`)
+  else out.push(`${eg.etq}: ${n < 2 ? 'con una sola réplica' : 'con menos de 3 réplicas'} no se calcula`)
+  out.push(`n = ${n} réplica${n === 1 ? '' : 's'}${extra ? ` · ${extra}` : ''}`)
+  return out
+}
 
 // ---------- crecimiento a partir de los recuentos: modelos de DMFit (ComBase) ----------
 // Se ajustan a TODOS los puntos (ninguno se descarta para mejorar el R²), por mínimos cuadrados sobre ln(UFC/mL):
@@ -473,12 +449,19 @@ export function ajusteDmfit(t, ly, modelo = 'baranyi', ymaxFijo10 = NaN, mcurv =
   }
   const F = (x, y0, ym, mu, q) => (esBar ? baranyiF(x, y0, ym, mu, q, mc) : huangF(x, y0, ym, mu, q))
   const fn = (p, x) => { const [y0, ym, mu, q] = armar(p); return x.map((v) => F(v, y0, ym, mu, q)) }
-  const lo = [ymin - 3, ymin, 1e-4, 0], hi = [y0Hi, ymaxObs + 5, 20, esBar ? 80 : Math.max(4 * span, 10)]
+  const lo = [ymin - 3, ymin, 1e-4, 0], hi = [y0Hi, ymaxObs + 5, 20, esBar ? 200 : Math.max(2 * tt[n - 1], 4 * span, 10)]
   let mejor = null, mejorConv = null
-  // varios puntos de partida para el lag: el ajuste no lineal puede quedar en un mínimo local
-  for (const fr of [0, 0.15, 0.3, 0.5, 0.7]) for (const fm of [0.6, 1]) {
+  // Puntos de partida del lag. El lag de los modelos se cuenta desde t = 0, y los datos pueden empezar más tarde (por ejemplo,
+  // la OD por debajo del mínimo para el logaritmo no entra): los arranques se reparten en el rango MEDIDO (t₀ + fracción del
+  // intervalo) y se agrega el lag por la tangente (donde la recta de máxima pendiente cruza el nivel inicial). Si no, el ajuste
+  // puede quedar en un mínimo local plano (μ ≈ 0) y no dibujar la curva.
+  let iMax = 0, sMax = -Infinity
+  for (let i = 0; i + 1 < tu.length; i++) { const sl = (mu_t[i + 1] - mu_t[i]) / (tu[i + 1] - tu[i]); if (sl > sMax) { sMax = sl; iMax = i } }
+  const lagTan = sMax > 0 ? tu[iMax] - (mu_t[iMax] - mu_t[0]) / sMax : NaN
+  const lags = [0, ...[0, 0.15, 0.3, 0.5, 0.7, 0.85].map((fr) => tt[0] + fr * span), ...(finito(lagTan) && lagTan > 0 ? [lagTan] : [])]
+  for (const lag0 of lags) for (const fm of [0.6, 1]) {
     const m0 = Math.max(mu0 * fm, 1e-3)
-    const p0 = [mu_t[0], ymaxObs, m0, esBar ? m0 * fr * span : fr * span]
+    const p0 = [mu_t[0], ymaxObs, m0, esBar ? Math.min(m0 * lag0, hi[3]) : Math.min(lag0, hi[3])]
     const r = levenbergMarquardt(fn, ix.map((i) => p0[i]), ix.map((i) => lo[i]), ix.map((i) => hi[i]), tt, yy)
     if (!finito(r.rss) || !r.p.every(finito)) continue
     if (!mejor || r.rss < mejor.rss) mejor = r
@@ -499,6 +482,9 @@ export function ajusteDmfit(t, ly, modelo = 'baranyi', ymaxFijo10 = NaN, mcurv =
   })
   const [y0, ymax, mu, q] = armar(mejor.p)
   const pred = (x) => F(x, y0, ymax, mu, q)
+  // solución degenerada: la curva quedó plana (no describe el crecimiento): no se informa como ajuste
+  const rssPlano = yy.reduce((acc, v) => acc + (v - my) ** 2, 0)
+  if (!(mu > 1e-3) || !(mejor.rss < 0.5 * rssPlano)) return { ...vacio, motivo: `El ajuste de ${MODELOS_UFC[modelo]} no encontró una curva de crecimiento (quedó plano en todos los puntos de partida).` }
   const par = { y0, ymax, mu, q, sinAsintota: !finito(fijo) && ymax >= ymaxObs + 5 - 1e-3 }
   const h0 = esBar ? q : mu * q
   const lag = esBar ? q / mu : q
@@ -633,9 +619,8 @@ export function puntosUfc(ufcRes, m, aj) {
     const r = (ufcRes.reps || []).filter((x) => x.Muestra === m && x.Conteos > 0 && finito(x.UFC_mL) && x.UFC_mL > 0 && !ufcRes.fuera?.has(`${x.Muestra}|${x.T_h}|${x.Replica}`))
     if (r.length) return { t: r.map((x) => x.T_h), ly: r.map((x) => Math.log(x.UFC_mL)) }
   }
-  const geo = centroUfc(aj) === 'geo'
   const r = ufcRes.res.filter((x) => x.Muestra === m && finito(x.UFC_mL) && x.UFC_mL > 0)
-  return { t: r.map((x) => x.T_h), ly: r.map((x) => (geo ? centroLog10(x, 'geo') * Math.LN10 : Math.log(x.UFC_mL))) }
+  return { t: r.map((x) => x.T_h), ly: r.map((x) => Math.log(x.UFC_mL)) }
 }
 
 // Parámetros de crecimiento por recuento de cada cepa con el modelo elegido.
@@ -673,7 +658,10 @@ export function fasesUfc(ufcRes, m, aj) {
     const fase = (x) => (x >= c.t0 - 1e-9 && x <= c.t1 + 1e-9 ? 'exponencial' : x < c.t0 ? 'lag' : 'estacionaria')
     return { ok: true, c, fase, frac: NaN, tIni: c.t0, tFin: c.t1, sigue: c.t1 >= c.tDatos1 - 1e-9 }
   }
-  const frac = fraccionExp(aj)
+  return fasesDeAjuste(c, fraccionExp(aj))
+}
+// fases de un ajuste de Baranyi y Roberts o Huang (sirve para la OD y para las UFC): exponencial = velocidad ≥ frac · μ máx
+export function fasesDeAjuste(c, frac) {
   const h = 1e-3
   const rel = (x) => ((c.pred10(x + h) - c.pred10(x - h)) / (2 * h)) * Math.LN10 / c.mu
   // tiempo de máxima velocidad: separa el lag (antes) de la estacionaria (después)
@@ -682,13 +670,36 @@ export function fasesUfc(ufcRes, m, aj) {
   const tPico = grilla.reduce((a, x) => (rel(x) > rel(a) ? x : a), t0)
   const fase = (x) => (rel(x) >= frac ? 'exponencial' : x < tPico ? 'lag' : 'estacionaria')
   const enExp = grilla.filter((x) => fase(x) === 'exponencial')
+  // los límites son los tiempos exactos en que la velocidad cruza la fracción de μ máx (bisección entre puntos de la grilla)
+  const cruce = (a, b) => { let lo = a, hi = b; const eb = fase(b) === 'exponencial'; for (let i = 0; i < 50; i++) { const mm = (lo + hi) / 2; if ((fase(mm) === 'exponencial') === eb) hi = mm; else lo = mm } return (lo + hi) / 2 }
+  const i0 = grilla.findIndex((x) => fase(x) === 'exponencial'), i1 = grilla.length - 1 - [...grilla].reverse().findIndex((x) => fase(x) === 'exponencial')
   return {
     ok: true, c, fase, frac,
-    tIni: enExp.length ? enExp[0] : NaN, tFin: enExp.length ? enExp[enExp.length - 1] : NaN,
+    tIni: enExp.length ? (i0 > 0 ? cruce(grilla[i0 - 1], grilla[i0]) : grilla[0]) : NaN, tFin: enExp.length ? (i1 < N ? cruce(grilla[i1], grilla[i1 + 1]) : grilla[N]) : NaN,
     sigue: enExp.length > 0 && enExp[enExp.length - 1] >= t1 - 1e-9,   // la fase exponencial sigue al final de los datos
   }
 }
 
+// Tramo (fase exponencial) de las UFC que rige para una cepa, y quién lo fija:
+//   Linealizar log₁₀: el elegido a mano en «Fases…» o, si no hay, el automático de la recta (origen 'manual' / 'auto').
+//   Baranyi y Roberts o Huang: lo fija el modelo (velocidad ≥ fracción de μ máx); el tramo a mano no se usa (origen 'modelo').
+//   Si el modelo no ajusta (pocos tiempos, no converge) se usa el automático de la recta y se avisa (origen 'respaldo').
+export function tramoUfcRige(ufcRes, m, aj, fz) {
+  const f = fz || fasesUfc(ufcRes, m, aj)
+  const ok = (x) => x?.ok && finito(x.tIni) && finito(x.tFin)
+  const modelo = modeloUfc(aj)
+  if (modelo === 'lineal') {
+    const man = tramoUfcElegido(aj, m)
+    if (man) return { ventana: man, origen: 'manual', modelo }
+    return ok(f) ? { ventana: [f.tIni, f.tFin], origen: 'auto', modelo } : { ventana: null, origen: 'ninguno', modelo }
+  }
+  if (ok(f) && (f.sigue || f.c?.sinAsintota)) return { ventana: null, origen: 'sinMeseta', modelo, aviso: `${m}: la curva no llega a la fase estacionaria; con ${MODELOS_UFC[modelo]} no se marcan las fases` }
+  if (ok(f)) return { ventana: [f.tIni, f.tFin], origen: 'modelo', modelo }
+  const g = fasesUfc(ufcRes, m, { ...aj, ufc_modelo: 'lineal', ufc_ventana: {}, calib_ventana: {} })
+  return ok(g)
+    ? { ventana: [g.tIni, g.tFin], origen: 'respaldo', modelo, aviso: `${m}: el modelo no ajustó (${f?.motivo || 'sin ajuste'}); se usa el tramo automático de la recta de «Linealizar log₁₀»` }
+    : { ventana: null, origen: 'ninguno', modelo, aviso: `${m}: sin fase exponencial detectada (${f?.motivo || 'sin ajuste'})` }
+}
 
 // ---------- curva del crecimiento por recuento ----------
 // La curva que se dibuja es la del modelo elegido (aj.ufc_modelo), el mismo de los parámetros; aj.ufc_suave === false:

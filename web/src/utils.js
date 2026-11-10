@@ -57,7 +57,7 @@ export const signif = (x, d = 4) => (fin(x) ? Number(x.toPrecision(d)) : NaN)
 export const fx = (x, d = 3) => (fin(x) ? x.toFixed(d).replace('.', ',') : '–')
 export const fs = (x, d = 4) => (fin(x) ? String(signif(x, d)).replace('.', ',') : '–')
 export const sci = (x, d = 2) => (fin(x) ? x.toExponential(d).replace('e+', ' × 10^').replace('e-', ' × 10^-').replace('.', ',') : '–')
-export const sciCorto = (x, d = 2) => (fin(x) ? x.toExponential(d).replace('e+', 'E+').replace('e-', 'E-') : '–')
+export const sciCorto = (x, d = 2) => (fin(x) ? x.toExponential(d).replace('.', ',').replace('e+', 'E+').replace('e-', 'E-') : '–')
 const SUB = '₀₁₂₃₄₅₆₇₈₉'
 export const sub = (n) => String(n).replace(/\d/g, (d) => SUB[Number(d)])
 export const nombreRep = (m, r) => m + sub(r)
@@ -110,13 +110,28 @@ export const descargarTexto = (texto, nombre, tipo = 'text/plain;charset=utf-8')
 // <svg> a PNG o SVG (el gráfico usa colores explícitos, así que el archivo sale igual que en pantalla)
 // formato: 'png' | 'jpg' | 'svg'. fondo: color de relleno, null = transparente (se quita el fondo del gráfico),
 // undefined = el fondo que ya tiene el gráfico. escala: multiplicador de píxeles para PNG y JPG.
-export function exportarSVG(svg, nombre, formato = 'png', fondo = '#ffffff', escala = 3) {
+// escala: PNG/JPG = píxeles del archivo por unidad del dibujo; SVG = tamaño del archivo por unidad del dibujo.
+// grises: pasa todo el dibujo a escala de grises (luminancia) con un filtro, también en el SVG.
+export function exportarSVG(svg, nombre, formato = 'png', fondo = '#ffffff', escala = 3, grises = false) {
   const clon = svg.cloneNode(true)
   const w = svg.viewBox.baseVal.width || svg.clientWidth
   const h = svg.viewBox.baseVal.height || svg.clientHeight
   clon.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
-  clon.setAttribute('width', w)
-  clon.setAttribute('height', h)
+  clon.setAttribute('width', formato === 'svg' ? w * escala : w)
+  clon.setAttribute('height', formato === 'svg' ? h * escala : h)
+  if (grises) {
+    const ns = 'http://www.w3.org/2000/svg'
+    const f = document.createElementNS(ns, 'filter')
+    f.setAttribute('id', 'gris-exp'); f.setAttribute('filterUnits', 'userSpaceOnUse'); f.setAttribute('x', '0'); f.setAttribute('y', '0'); f.setAttribute('width', w); f.setAttribute('height', h)
+    f.setAttribute('color-interpolation-filters', 'sRGB')
+    const m = document.createElementNS(ns, 'feColorMatrix')
+    m.setAttribute('type', 'matrix'); m.setAttribute('values', '0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0.2126 0.7152 0.0722 0 0 0 0 0 1 0')
+    f.appendChild(m)
+    const g = document.createElementNS(ns, 'g')
+    g.setAttribute('filter', 'url(#gris-exp)')
+    while (clon.firstChild) g.appendChild(clon.firstChild)
+    clon.appendChild(f); clon.appendChild(g)
+  }
   if (fondo === null) clon.querySelectorAll('.fondo-graf').forEach((x) => x.remove())
   const xml = new XMLSerializer().serializeToString(clon)
   if (formato === 'svg') return descargarBlob(new Blob([xml], { type: 'image/svg+xml' }), nombre + '.svg')

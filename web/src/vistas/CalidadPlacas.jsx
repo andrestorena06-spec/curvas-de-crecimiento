@@ -12,7 +12,7 @@ import { LETRAS, exportarSVG, fmtTick, fx, tCuantil, ticks } from '../utils.js'
 import { Valor } from '../fichas/FichaCalculo.jsx'
 import { GrupoMostrar, GrupoTipoError, conEtiquetas, textoMostrar, useMostrar } from '../ui/mostrar.jsx'
 import { fichaBlancoPlaca } from '../fichas/definiciones.js'
-import { ModalFases, ventanaOdElegida, zonasFases } from './FasesCepa.jsx'
+import { ModalFases, tramoOdRige, zonasVentana } from './FasesCepa.jsx'
 
 const ERRORES = [['sd', 'Desviación estándar'], ['sem', 'Error estándar (EEM)'], ['ic95', 'IC 95 %']]
 const errorDe = (v, tipo) => {
@@ -84,15 +84,16 @@ export function GraficoExclusion(props) {
         {ty.ticks.filter((v) => v >= y0 - 1e-12 && v <= y1 + 1e-12).map((v) => (
           <g key={v}>
             {e.grilla && <line x1={L} x2={W - R} y1={py(v)} y2={py(v)} stroke={T.grilla} />}
+            <line x1={L - 4} x2={L} y1={py(v)} y2={py(v)} stroke={T.texto} strokeWidth="0.8" />
             <text x={L - 8} y={py(v)} textAnchor="end" dominantBaseline="central" fontSize={e.tamNumeros} fill={T.sec}>{fmtTick(v, ty.paso)}</text>
           </g>
         ))}
-        <line x1={L} x2={W - R} y1={acercada || y0 > 0 ? H - B : py(0)} y2={acercada || y0 > 0 ? H - B : py(0)} stroke={T.eje} />
-        <line x1={L} x2={L} y1={TOP} y2={H - B} stroke={T.eje} />
+        <line x1={L} x2={W - R} y1={acercada || y0 > 0 ? H - B : py(0)} y2={acercada || y0 > 0 ? H - B : py(0)} stroke={T.texto} strokeWidth="0.9" />
+        <line x1={L} x2={L} y1={TOP} y2={H - B} stroke={T.texto} strokeWidth="0.9" />
         <text transform={`translate(16 ${(TOP + H - B) / 2}) rotate(-90)`} textAnchor="middle" fontSize={e.tamEjes} fill={T.texto}>{yT}</text>
         {orden.map((m, i) => (
           <g key={m}>
-            <rect x={cx(i) - band * 0.42} y={TOP} width={band * 0.84} height={H - TOP - B} fill={m === 'Blanco' ? T.grilla : colores[m]} opacity={m === 'Blanco' ? 0.35 : 0.07} rx="6"
+            <rect x={cx(i) - band * 0.42} y={TOP} width={band * 0.84} height={H - TOP - B} fill="transparent"
               onClick={interactivo && !acercada ? () => setFoco(m) : undefined} style={interactivo && !acercada ? { cursor: 'zoom-in' } : undefined} />
             <text x={cx(i)} y={H - B + 6 + e.tamEjes} textAnchor="middle" fontSize={e.tamEjes} fill={T.texto}>{m}</text>
             <text x={cx(i)} y={H - B + 10 + e.tamEjes * 2} textAnchor="middle" fontSize={e.tamNumeros * 0.95} fill={T.sec}>{res[i] ? `n = ${res[i].n} de ${grupos[i].length}` : ''}</text>
@@ -201,7 +202,7 @@ function VistaCepasPlacas({ s, lecturas, mo, o }) {
         {tarjetas.map(({ m, color, series, extras, nEx, nSo, tiempos, filas }) => (
           <div key={m} className="mosaico">
             <div className="mosaico-cab" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}><h2><i className="punto" style={{ background: color, marginRight: 6 }} />{m}</h2>{filas.length > 0 && <button className="chico fantasma" onClick={() => setFasesDe(m)} data-tip={'Fases de la curva: lag, exponencial y estacionaria\nAmplía la curva para elegir qué puntos forman la fase exponencial'}>Fases…</button>}</div>
-            <Grafico series={series} extras={extras} yTxt={m === 'Blanco' ? 'OD leída' : 'OD'} alto={240} zonas={zonasFases(filas, tiempos[0], tiempos[tiempos.length - 1], false, ventanaOdElegida(s, filas))} estilo={s.estiloGrafico('cepaPlacas')} idEstilo="cepaPlacas" nombre={`placas_${m}`}
+            <Grafico series={series} extras={extras} yTxt={m === 'Blanco' ? 'OD leída' : 'OD'} alto={240} zonas={zonasVentana(tramoOdRige(s, m, filas).ventana, tiempos[0], tiempos[tiempos.length - 1])} estilo={s.estiloGrafico('cepaPlacas')} idEstilo="cepaPlacas" nombre={`placas_${m}`}
               onPuntoClick={(k) => { const z = claves.get(k); if (z) setZoom(z) }} />
             <div className="fila" style={{ flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
               <span className={`chip ${nEx ? 'peligro' : nSo ? 'aviso' : 'ok'}`}>{nEx ? `${nEx} excluida${nEx > 1 ? 's' : ''}` : nSo ? `${nSo} sospechosa${nSo > 1 ? 's' : ''}` : 'sin marcas'}</span>

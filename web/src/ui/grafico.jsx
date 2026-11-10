@@ -1,13 +1,17 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { TEMAS, useTema } from '../tema.js'
-import { fmtTick, ticks } from '../utils.js'
+import { fmtTick, fx, ticks } from '../utils.js'
 import { ModalGuardarImagen, useGraficoCtx } from './guardarImagen.jsx'
 import { Icono } from './base.jsx'
+
+// Formato de publicación (como Biofilm): ejes en tinta, marcas de 4 px hacia afuera y grilla solo horizontal
+const MARCA = 4
 
 const fin = Number.isFinite
 
 // Ancho real del contenedor: el gráfico se dibuja a tamaño 1:1 (sin escalar) para que el texto
 // tenga el mismo tamaño que el resto del programa, sea cual sea el ancho de la ventana.
+
 export function useAncho(def = 900) {
   const ref = useRef()
   const [w, setW] = useState(0)
@@ -89,14 +93,16 @@ export function Grafico(props) {
   const xT = e.xTxt !== undefined ? e.xTxt : xTxt, yT = e.yTxt !== undefined ? e.yTxt : yTxt, zT = e.yTxtDer !== undefined ? e.yTxtDer : yTxtDer
   let altoBase = fin(num(e.alto)) && num(e.alto) > 120 ? num(e.alto) : alto
   const izq = series.filter((s) => !s.der), der = series.filter((s) => s.der)
+  const seriesR = props.seriesRango || series
+  const izqR = seriesR.filter((s) => !s.der), derR = seriesR.filter((s) => s.der)
   const ys = (ss) => ss.flatMap((s) => s.data.flatMap((d) => [d.y, d.lo, d.hi]))
-  let [x0, x1] = xlim || rango([...series.flatMap((s) => s.data.flatMap((d) => [d.x, s.errores ? d.xlo : NaN, s.errores ? d.xhi : NaN])), ...extras.map((q) => q.x)], 0.03)
-  let [y0, y1] = ylim || rango([...ys(izq), ...extras.map((q) => q.y)], 0.07, ceroY)
+  let [x0, x1] = xlim || rango([...seriesR.flatMap((s) => s.data.flatMap((d) => [d.x, s.errores ? d.xlo : NaN, s.errores ? d.xhi : NaN])), ...extras.map((q) => q.x)], 0.03)
+  let [y0, y1] = ylim || rango([...ys(izqR), ...extras.map((q) => q.y)], 0.07, ceroY)
   if (fin(num(e.xmin))) x0 = num(e.xmin)
   if (fin(num(e.xmax))) x1 = num(e.xmax)
   if (fin(num(e.ymin))) y0 = num(e.ymin)
   if (fin(num(e.ymax))) y1 = num(e.ymax)
-  let [z0, z1] = ylimDer || rango(ys(der), 0.08)
+  let [z0, z1] = ylimDer || rango(ys(derR), 0.08)
   if (zoom) {
     // el eje derecho acompaña al izquierdo en la misma proporción
     const fz = (v) => z0 + ((v - y0) / (y1 - y0 || 1)) * (z1 - z0)
@@ -105,11 +111,13 @@ export function Grafico(props) {
   }
   const tx = ticks(x0, x1, 9), ty = ticks(y0, y1, 7), tz = ticks(z0, z1, 7)
   const nomLeyenda = series.filter((s) => s.nombre)
+  const maxLenLey = nomLeyenda.length ? Math.max(...nomLeyenda.map((s) => s.nombre.length)) : 0
+  const colW = Math.max(200, 44 + maxLenLey * e.tamLeyenda * 0.58)
   const conLeyenda = leyenda && e.leyenda !== 'no' && nomLeyenda.length > 0
   const leyDer = conLeyenda && e.leyenda === 'derecha'
-  const anchoLey = leyDer ? Math.min(240, 40 + Math.max(...nomLeyenda.map((s) => s.nombre.length)) * e.tamLeyenda * 0.58) : 0
+  const anchoLey = leyDer ? Math.min(Math.round(anchoReal * 0.45), 40 + maxLenLey * e.tamLeyenda * 0.58) : 0
   const L = 34 + e.tamNumeros * 2.8, R = (der.length ? 66 : 18) + anchoLey, TOP = tit ? 18 + e.tamTitulo * 1.6 : 14
-  const colLey = Math.max(1, Math.floor((anchoReal - L - R) / 200))
+  const colLey = Math.max(1, Math.floor((anchoReal - L - R) / colW))
   const filasLey = conLeyenda && !leyDer ? Math.ceil(nomLeyenda.length / colLey) : 0
   const altoFila = e.tamLeyenda * 1.75
   const B = 24 + e.tamNumeros * 1.4 + e.tamEjes * 1.6 + filasLey * altoFila
@@ -195,7 +203,7 @@ export function Grafico(props) {
             return
           }
           const c = cercano(p.mx, p.my)
-          setHover(c ? { cx: p.cx, cy: p.cy, X: c.X, Y: c.Y, color: c.d.s.color, tip: c.d.tip || `${c.d.s.nombre ? c.d.s.nombre + '\n' : ''}x = ${c.d.x.toFixed(2)}\ny = ${c.d.y.toFixed(4)}`, key: c.d.key } : null)
+          setHover(c ? { cx: p.cx, cy: p.cy, X: c.X, Y: c.Y, color: c.d.s.color, tip: c.d.tip || `${c.d.s.nombre ? c.d.s.nombre + '\n' : ''}${xTxt || 'x'} = ${fx(c.d.x, 2)}\n${(c.d.s.der ? yTxtDer : yTxt) || 'y'} = ${fx(c.d.y, 4)}`, key: c.d.key } : null)
         }}
         onMouseLeave={() => { setHover(null); setCaja(null); setPaneo(null) }}
         onMouseDown={!interactivo ? undefined : (ev) => {
@@ -227,21 +235,22 @@ export function Grafico(props) {
         {ty.ticks.filter((v) => v >= y0 - 1e-9 && v <= y1 + 1e-9).map((v) => (
           <g key={'y' + v}>
             {e.grilla && <line x1={L} x2={W - R} y1={py(v)} y2={py(v)} stroke={T.grilla} />}
+            <line x1={L - MARCA} x2={L} y1={py(v)} y2={py(v)} stroke={T.texto} strokeWidth="0.8" />
             <text x={L - 8} y={py(v)} textAnchor="end" dominantBaseline="central" fontSize={e.tamNumeros} fill={T.sec}>{fmtTick(v, ty.paso)}</text>
           </g>
         ))}
         {der.length > 0 && tz.ticks.filter((v) => v >= z0 && v <= z1).map((v) => (
-          <text key={'z' + v} x={W - R + 8} y={pz(v)} dominantBaseline="central" fontSize={e.tamNumeros} fill={T.sec}>{fmtTick(v, tz.paso)}</text>
+          <g key={'z' + v}><line x1={W - R} x2={W - R + MARCA} y1={pz(v)} y2={pz(v)} stroke={T.texto} strokeWidth="0.8" /><text x={W - R + 8} y={pz(v)} dominantBaseline="central" fontSize={e.tamNumeros} fill={T.sec}>{fmtTick(v, tz.paso)}</text></g>
         ))}
         {tx.ticks.filter((v) => v >= x0 - 1e-9 && v <= x1 + 1e-9).map((v) => (
           <g key={'x' + v}>
-            {e.grilla && <line x1={px(v)} x2={px(v)} y1={TOP} y2={H - B + filasLey * altoFila - filasLey * altoFila} stroke={T.grilla} strokeDasharray="2 4" />}
+            <line x1={px(v)} x2={px(v)} y1={H - B} y2={H - B + MARCA} stroke={T.texto} strokeWidth="0.8" />
             <text x={px(v)} y={H - B + 6 + e.tamNumeros} textAnchor="middle" fontSize={e.tamNumeros} fill={T.sec}>{fmtTick(v, tx.paso)}</text>
           </g>
         ))}
-        <line x1={L} x2={W - R} y1={H - B} y2={H - B} stroke={T.eje} />
-        <line x1={L} x2={L} y1={TOP} y2={H - B} stroke={T.eje} />
-        {der.length > 0 && <line x1={W - R} x2={W - R} y1={TOP} y2={H - B} stroke={T.eje} />}
+        <line x1={L} x2={W - R} y1={H - B} y2={H - B} stroke={T.texto} strokeWidth="0.9" />
+        <line x1={L} x2={L} y1={TOP} y2={H - B} stroke={T.texto} strokeWidth="0.9" />
+        {der.length > 0 && <line x1={W - R} x2={W - R} y1={TOP} y2={H - B} stroke={T.texto} strokeWidth="0.9" />}
         <text x={(L + W - R) / 2} y={H - B + 14 + e.tamNumeros + e.tamEjes} textAnchor="middle" fontSize={e.tamEjes} fill={T.texto}>{xT}</text>
         <text transform={`translate(${6 + e.tamEjes * 0.6} ${(TOP + H - B) / 2}) rotate(-90)`} textAnchor="middle" fontSize={e.tamEjes} fill={T.texto}>{yT}</text>
         {der.length > 0 && <text transform={`translate(${W - R + 50} ${(TOP + H - B) / 2}) rotate(90)`} textAnchor="middle" fontSize={e.tamEjes} fill={T.texto}>{zT}</text>}
@@ -254,7 +263,7 @@ export function Grafico(props) {
           return (
             <g key={i}>
               <rect x={px(a)} y={TOP} width={px(b) - px(a)} height={H - TOP - B} fill={z.color} opacity="0.14" />
-              {z.etiqueta && <text x={(px(a) + px(b)) / 2} y={TOP + 13} textAnchor="middle" fontSize={e.tamNumeros} fontWeight="600" fill={z.color}>{z.etiqueta}</text>}
+              {z.etiqueta && <text x={(px(a) + px(b)) / 2} y={TOP + 13} textAnchor="middle" fontSize={e.tamNumeros} fontWeight="500" fill={z.color}>{z.etiqueta}</text>}
             </g>
           )
         })}
@@ -297,23 +306,30 @@ export function Grafico(props) {
         {/* valores sobre los puntos (fuera del recorte para que no se corten) */}
         {series.filter((s) => s.etiqueta).map((s) => {
           const f = s.der ? pz : py
+          let previa = null   // etiqueta anterior de la serie: si se superponen, la siguiente sube para que se lean las dos
           return s.data.filter((d) => fin(d.y) && dentro(d.x)).map((d, i) => {
             const t = s.etiqueta(d)
             if (!t) return null
-            const Y = (fin(d.hi) && s.errores ? f(d.hi) : f(d.y)) - 7
-            return <text key={s.id + 'v' + i} x={px(d.x)} y={Y} textAnchor="middle" fontSize={e.tamValores} fill={s.color} fontWeight="600" stroke={e.fondo === 'blanco' ? '#fff' : T.panel} strokeWidth="3" paintOrder="stroke">{t}</text>
+            // el texto no se sale del área del gráfico: se corre hacia adentro en los extremos (si no, pisa el eje o se recorta)
+            const anchoT = String(t).length * e.tamValores * 0.58
+            const xmin = L + 3 + anchoT / 2, xmax = W - R - 3 - anchoT / 2
+            const X = xmin <= xmax ? Math.min(xmax, Math.max(xmin, px(d.x))) : (L + W - R) / 2
+            let Y = (fin(d.hi) && s.errores ? f(d.hi) : f(d.y)) - 7
+            if (Y < TOP + e.tamValores) Y = (fin(d.lo) && s.errores ? f(d.lo) : f(d.y)) + e.tamValores + 6   // sin lugar arriba: debajo del punto
+            if (previa && X - anchoT / 2 < previa.x1 + 2 && Math.abs(Y - previa.Y) < e.tamValores * 1.1) Y = previa.Y - e.tamValores * 1.2
+            previa = { x1: X + anchoT / 2, Y }
+            return <text key={s.id + 'v' + i} x={X} y={Y} textAnchor="middle" fontSize={e.tamValores} fill={s.color} fontWeight="500" stroke={e.fondo === 'blanco' ? '#fff' : T.panel} strokeWidth="3" paintOrder="stroke">{t}</text>
           })
         })}
         {hover && <circle cx={hover.X} cy={hover.Y} r="6" fill="none" stroke={T.acento} strokeWidth="1.6" pointerEvents="none" />}
         {conLeyenda && nomLeyenda.map((s, i) => {
-          const fx = leyDer ? W - anchoLey + 6 : L + (i % colLey) * 200
+          const fx = leyDer ? W - anchoLey + 6 : L + (i % colLey) * colW
           const fy = leyDer ? TOP + 10 + i * altoFila : H - filasLey * altoFila + Math.floor(i / colLey) * altoFila + altoFila / 2 - 4
-          const max = leyDer ? 32 : 27
           return (
             <g key={'l' + s.id}>
               {s.linea === false ? <circle cx={fx + 10} cy={fy} r="4" fill={s.color} /> : <line x1={fx} x2={fx + 20} y1={fy} y2={fy} stroke={s.color} strokeWidth={2.4 * e.grosor} strokeDasharray={s.dash || undefined} opacity={s.opacidad ?? 1} />}
               {s.forma === 'cuadrado' && <rect x={fx + 6} y={fy - 4} width="8" height="8" fill={s.color} />}
-              <text x={fx + 26} y={fy} dominantBaseline="central" fontSize={e.tamLeyenda} fill={T.texto}>{s.nombre.length > max ? s.nombre.slice(0, max - 1) + '…' : s.nombre}</text>
+              <text x={fx + 26} y={fy} dominantBaseline="central" fontSize={e.tamLeyenda} fill={T.texto}>{s.nombre}</text>
             </g>
           )
         })}
@@ -329,8 +345,8 @@ export function Grafico(props) {
         </div>
       )}
       {guardar && (
-        <ModalGuardarImagen nombre={nombre} anchoPantalla={W} altoPantalla={H} onClose={() => setGuardar(false)}
-          renderizar={(w, h, r, blanco) => <Grafico {...props} anchoFijo={w} altoTotal={h} refSvg={r} interactivo={false} exportar={false}
+        <ModalGuardarImagen nombre={nombre} anchoPantalla={W} altoPantalla={H} onClose={() => setGuardar(false)} cepas={[...new Set(props.series.map((q) => q.cepa).filter(Boolean))]}
+          renderizar={(w, h, r, blanco, cepasSel) => <Grafico {...props} series={cepasSel ? props.series.filter((q) => !q.cepa || cepasSel.includes(q.cepa)) : props.series} seriesRango={props.series} anchoFijo={w} altoTotal={h} refSvg={r} interactivo={false} exportar={false}
             xlim={zoom ? [zoom.x0, zoom.x1] : props.xlim} ylim={zoom ? [zoom.y0, zoom.y1] : props.ylim} estilo={blanco ? { ...estilo, fondo: 'blanco' } : estilo} />} />
       )}
     </div>

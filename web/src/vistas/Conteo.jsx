@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { usePlanilla } from '../ui/planilla.js'
-import { estimarUfc, textoEstado } from '../motor/ufc.js'
+import { centroUfc, estimarUfc, textoEstado } from '../motor/ufc.js'
 import { Valor } from '../fichas/FichaCalculo.jsx'
 import { fichaUfcReplica } from '../fichas/definiciones.js'
 import { claveGrupoUfc, claveUfc, dilucionesUfc, serieUfc } from '../modelo.js'
@@ -158,7 +158,7 @@ export function Conteo({ s }) {
             {filas.length > 0 && <p className="ayuda" style={{ margin: '-4px 0 10px' }}>Todas las réplicas de una cepa en un mismo tiempo usan <b>la misma dilución</b> (recuadrada); las demás quedan atenuadas y no entran en el cálculo. Para cambiarla: columna <b>«Dilución usada»</b> o <b>clic derecho</b> sobre el conteo.</p>}
             {!filas.length ? <p className="ayuda">Todavía no hay conteos.</p> : (
               <div className="tabla-scroll">
-                <table className="tabla" ref={planilla} onKeyDown={navegarTabla}>
+                <table className="tabla trabajo" ref={planilla} onKeyDown={navegarTabla}>
                   <thead><tr><th>Cepa</th><th className="num">Réplica</th><th className="num">T (h)</th><th className="num">Vol. µL</th><th data-tip={'Dilución usada para calcular las UFC/mL (la misma para todas las réplicas de la cepa en ese tiempo)\nAuto: la que tiene más réplicas dentro del rango contable. Podés elegir otra acá o con clic derecho sobre un conteo.\nLas demás diluciones de la réplica no entran en el cálculo.'}>Dilución usada</th><th data-tip={'Réplicas con la dilución usada\nDE: desviación estándar de log₁₀ UFC/mL entre las réplicas de la cepa en ese tiempo.\n⚠ Dixon: esta réplica quedaría excluida por el test (Q de Dixon, o Grubbs con más de 10).'}>DE · Dixon</th>{ks.map((k) => <th key={k} className="num" data-tip={fraccion(serieD[k]?.D)}>{etqD(serieD[k])}</th>)}<th className="num">UFC/mL</th><th className="num">log₁₀ UFC/mL</th><th>Estado</th><th /></tr></thead>
                   <tbody>{filas.map((x) => {
                     const p = par(x)
@@ -167,7 +167,7 @@ export function Conteo({ s }) {
                     const fuera = s.ufcRes?.fuera?.has(claveUfc(x))
                     // ficha de la réplica (la misma fila de resultados que usa el resto del programa)
                     const rep = s.ufcRes?.reps?.find((r) => r.Muestra === x.muestra && r.T_h === Number(x.t) && r.Replica === (Number(x.replica) || 1))
-                    const fRep = rep ? () => fichaUfcReplica(rep, { dixon: s.ufcRes.dixon?.[claveUfc(x)], fuera }) : null
+                    const fRep = rep ? () => fichaUfcReplica(rep, { dixon: s.ufcRes.dixon?.[claveUfc(x)], fuera, centro: centroUfc(exp.aj), error: ['sd', 'sem', 'ic95'].includes(exp.aj.ufc_err) ? exp.aj.ufc_err : 'sd', grupo: s.ufcRes.res.find((q) => q.Muestra === rep.Muestra && q.T_h === rep.T_h) }) : null
                     return (
                       <tr key={x.id} className={fuera ? 'fuera' : ''}>
                         <td>{x.muestra}</td>
@@ -203,7 +203,7 @@ export function Conteo({ s }) {
               <span className="ayuda" style={{ paddingBottom: 9 }}>→ factor {fin(fGlobal) ? redondo(fGlobal) : '—'} por paso</span>
             </div>
             <div className="tabla-scroll">
-              <table className="tabla compacta" ref={planillaDil} onKeyDown={navegarTabla}>
+              <table className="tabla compacta trabajo" ref={planillaDil} onKeyDown={navegarTabla}>
                 <thead><tr><th>Columna</th><th className="num">Transferido µL</th><th className="num">Diluyente µL</th><th className="num">Factor del paso</th><th className="num">Dilución total</th><th className="num">Concentración</th><th className="num">Base 10</th><th /></tr></thead>
                 <tbody>{serieD.map((d) => (
                   <tr key={d.k} className={d.propio ? 'propio' : ''}>

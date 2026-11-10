@@ -9,7 +9,7 @@
 // ============================================================
 import { desvio, finito, media, od0TresFases, runmed3, trapz, ventanasLn } from '../motor/analisis.js'
 import { Q_TABLA, criticoGrubbs, detectar } from '../motor/atipicos.js'
-import { MODELOS_UFC, TEXTO_IC_UFC, VAR_POI, dilDe, icUfc } from '../motor/ufc.js'
+import { MODELOS_UFC, dilDe } from '../motor/ufc.js'
 import { MODELOS_CALIB } from '../motor/calibracion.js'
 import { AYUDA, PARAMS, explicarResultado } from '../ayuda.js'
 import { fs, fx, tCuantil } from '../utils.js'
@@ -244,20 +244,20 @@ export function fichaParamOd(k, r, w, op, o = {}) {
 
 // ---------- media ± error de varios valores (réplicas) ----------
 // valores: [{ etiqueta, x }]; tipo: 'sd' | 'sem' | 'ic95'
-function pasosMedia(valores, unidad, tipo = 'sd') {
+function pasosMedia(valores, unidad, tipo = 'sd', fmt = g) {
   const xs = valores.map((q) => q.x), n = xs.length, m = media(xs), sd = n > 1 ? desvio(xs) : NaN
   const tc = n > 1 ? tCuantil(0.975, n - 1) : NaN
   const pasos = [
-    { titulo: `Los ${n} valores`, texto: valores.map((q) => `${q.etiqueta}: ${g(q.x)}`).join(' · '),
+    { titulo: `Los ${n} valores`, texto: valores.map((q) => `${q.etiqueta}: ${fmt(q.x)}`).join(' · '),
       esquema: { tipo: 'tira', valores: valores.map((q) => ({ x: q.x, etiqueta: q.etiqueta })), media: m, de: sd, unidad } },
-    { titulo: 'Media', formula: ['x̄ = Σxᵢ / n'], cuenta: [`x̄ = (${xs.map((x) => g(x)).join(' + ')}) / ${n} = ${g(m)}`] },
+    { titulo: 'Media', formula: ['x̄ = Σxᵢ / n'], cuenta: [`x̄ = (${xs.map((x) => fmt(x)).join(' + ')}) / ${n} = ${fmt(m)}`] },
   ]
   if (n > 1) {
     pasos.push({ titulo: 'Desviación estándar (cuánto se separan entre sí)', texto: 'Se divide por n − 1 porque la media salió de los mismos datos (corrección de Bessel).',
-      formula: ['DE = √[ Σ(xᵢ − x̄)² / (n − 1) ]'], cuenta: [`DE = √[ ${g(xs.reduce((s, x) => s + (x - m) ** 2, 0), 4)} / ${n - 1} ] = ${g(sd)}`] })
+      formula: ['DE = √[ Σ(xᵢ − x̄)² / (n − 1) ]'], cuenta: [`DE = √[ ${fmt(xs.reduce((s, x) => s + (x - m) ** 2, 0), 4)} / ${n - 1} ] = ${fmt(sd)}`] })
     if (tipo !== 'sd') pasos.push({ titulo: tipo === 'sem' ? 'Error estándar de la media' : 'Intervalo de confianza del 95 % de la media',
-      formula: [tipo === 'sem' ? 'EEM = DE / √n' : 'IC 95 % = x̄ ± t(0,975; n − 1) · DE / √n'],
-      cuenta: [tipo === 'sem' ? `EEM = ${g(sd)} / √${n} = ${g(sd / Math.sqrt(n))}` : `IC 95 % = ${g(m)} ± ${g(tc, 4)} × ${g(sd)} / √${n} = ${g(m - (tc * sd) / Math.sqrt(n))} a ${g(m + (tc * sd) / Math.sqrt(n))}`] })
+      formula: [tipo === 'sem' ? 'EEM = DE / √n' : 'IC 95 % = ± t(0,975; n − 1) · DE / √n'],
+      cuenta: [tipo === 'sem' ? `EEM = ${fmt(sd)} / √${n} = ${fmt(sd / Math.sqrt(n))}` : `IC 95 % = ± ${g(tc, 4)} × ${fmt(sd)} / √${n} = ± ${fmt((tc * sd) / Math.sqrt(n))}`] })
   }
   return { pasos, m, sd, n, tc }
 }
@@ -275,7 +275,7 @@ function tablaPorReplica(porReplica) {
   })))
   if (!filas.length) return null
   const valores = ['Valor', ...porReplica.map((pr) => { const f = pr.fichas[pr.fichas.length - 1]; return f ? `${f.valor}${f.unidad ? ' ' + f.unidad : ''}` : '–' })]
-  return { tipo: 'tabla', clase: 'por-replica', columnas: ['Cálculo', ...porReplica.map((pr) => pr.etiqueta)], filas: [...filas.map((f) => [f.titulo, ...f.celdas]), valores] }
+  return { tipo: 'tabla', clase: 'por-replica con-total', columnas: ['Cálculo', ...porReplica.map((pr) => pr.etiqueta)], filas: [...filas.map((f) => [f.titulo, ...f.celdas]), valores] }
 }
 const pasoReplicas = (porReplica, n) => {
   const t = tablaPorReplica(porReplica)
@@ -315,16 +315,40 @@ export function fichaResumen(rs, k, filas, o = {}) {
   return { titulo: `${PARAMS[k] || k} de la cepa`, sujeto: rs.Muestra, valor: g(M.m), unidad: '', metodos: 'replicas', que: AYUDA[k]?.sig,
     sub: finito(M.sd) ? `DE ${g(M.sd)} · n = ${M.n}` : `n = ${M.n}`, pasos: [...pasoReplicas(o.porReplica, M.n), ...M.pasos.map((p) => (p.titulo === 'Media' ? { ...p, titulo: 'Media de las réplicas' } : p))], avisos: [...avisoN(M.n), ...(vals.length < filas.length ? [`${filas.length - vals.length} réplica(s) no dieron este parámetro.`] : [])], nota }
 }
-// media ± error de las réplicas en un tiempo (puntos de la curva media)
-export function fichaMediaTiempo({ valores, t, nombre, tipo = 'sd', unidad = 'OD', etiquetaValor = 'OD media' }) {
-  const M = pasosMedia(valores, unidad, tipo)
-  // cómo se obtuvo el valor de CADA réplica en ese tiempo (lectura − blanco), antes de promediar
+// Media ± error de las réplicas en un tiempo: el MISMO cálculo para la OD y para las UFC/mL. Los valores son siempre los
+// lineales (OD o UFC/mL de cada réplica). En escala log₁₀ el valor es el log₁₀ de esa media y la barra va de
+// log₁₀(media − error) a log₁₀(media + error).
+// foco: '' (todo), 'media', 'error', 'rango', 'log' o 'rangolog': cada número de la tabla abre SOLO su cuenta.
+export function fichaMediaTiempo({ valores, t, nombre, tipo = 'sd', unidad = 'OD', etiquetaValor = '', foco = '', detalle = null, fmt = g, avisos = [], metodos = 'replicas', ajustes = null }) {
+  const M = pasosMedia(valores, unidad, tipo, fmt)
+  // cómo se obtuvo el valor de CADA réplica (OD: lectura − blanco; UFC: C / V), antes de promediar
   const det = valores.filter((q) => q.det)
   if (det.length) M.pasos.unshift({ titulo: `Cómo se obtuvo el valor de cada una de las ${det.length} réplicas`, texto: 'Cada pocillo se lee y se le resta el blanco de ese tiempo; recién después se promedian.',
     esquema: { tipo: 'tabla', clase: 'por-replica', columnas: ['Réplica', 'Lectura', 'Blanco', 'OD = lectura − blanco'], filas: det.map((q) => [q.etiqueta, g(q.det[0]), g(q.det[1]), `${g(q.det[0])} − ${g(q.det[1])} = ${g(q.x)}`]) } })
-  const err = tipo === 'sd' ? M.sd : tipo === 'sem' ? M.sd / Math.sqrt(M.n) : (M.tc * M.sd) / Math.sqrt(M.n)
-  return { titulo: etiquetaValor, sujeto: `${nombre} · t = ${hs(t)}`, valor: g(M.m), unidad, metodos: 'replicas', sub: finito(err) ? `± ${g(err)} (${{ sd: 'DE', sem: 'EEM', ic95: 'IC 95 %' }[tipo]}) · n = ${M.n}` : `n = ${M.n}`,
-    pasos: M.pasos, avisos: M.n < 3 && tipo !== 'sd' ? ['Con menos de 3 réplicas el EEM y el IC 95 % tienen muy poca base.'] : [] }
+  if (detalle) M.pasos.unshift({ titulo: detalle.titulo, texto: detalle.texto, esquema: { tipo: 'tabla', clase: 'por-replica', columnas: detalle.columnas, filas: detalle.filas } })
+  const etq = { sd: 'DE', sem: 'EEM', ic95: 'IC 95 %' }[tipo] || 'DE'
+  const bajo = tipo !== 'sd' && M.n < 3
+  const err = bajo || M.n < 2 ? NaN : tipo === 'sem' ? M.sd / Math.sqrt(M.n) : tipo === 'ic95' ? (M.tc * M.sd) / Math.sqrt(M.n) : M.sd
+  const lo = M.m - err, hi = M.m + err
+  const L = (x) => (finito(x) && x > 0 ? Math.log10(x) : NaN)
+  const fl = (x) => (finito(x) ? fx(x, 3) : '–')
+  const esBase = (p) => /^(Los \d|Cómo se obtuvo|UFC\/mL de cada)/.test(p.titulo)
+  const pBase = M.pasos.filter(esBase), pMedia = M.pasos.filter((p) => p.titulo === 'Media')
+  let pErr = M.pasos.filter((p) => !esBase(p) && p.titulo !== 'Media')
+  if (bajo) pErr = pErr.filter((p) => /^Desviación/.test(p.titulo))
+  const pRango = { titulo: 'Rango', formula: ['rango = x̄ − error a x̄ + error'], cuenta: [`rango = ${fmt(M.m)} − ${fmt(err)} a ${fmt(M.m)} + ${fmt(err)} = ${fmt(lo)} a ${fmt(hi)} ${unidad}`] }
+  const pLog = { titulo: 'log₁₀ de la media', texto: 'En escala log₁₀ el valor es el logaritmo de la media ya calculada (no se vuelve a promediar).', formula: ['log₁₀ x̄'], cuenta: [`log₁₀(${fmt(M.m)}) = ${fl(L(M.m))}`] }
+  const pRangoLog = { titulo: 'Rango en log₁₀', texto: 'Se pasa a log₁₀ cada extremo del rango: es la misma barra que en escala lineal, con el eje en log₁₀.', formula: ['log₁₀(x̄ − error) a log₁₀(x̄ + error)'],
+    cuenta: [lo > 0 ? `log₁₀(${fmt(lo)}) a log₁₀(${fmt(hi)}) = ${fl(L(lo))} a ${fl(L(hi))}` : `x̄ − error = ${fmt(lo)} ≤ 0 no tiene logaritmo: la barra no tiene extremo inferior. Superior: log₁₀(${fmt(hi)}) = ${fl(L(hi))}`] }
+  const base = { sujeto: `${nombre} · t = ${hs(t)}`, metodos, avisos: [...avisos, ...(bajo ? [`Con menos de 3 réplicas no se calcula el ${etq}.`] : [])], ...(ajustes ? { ajustes } : {}) }
+  const tit = etiquetaValor || `${unidad} media`, subN = `n = ${M.n}`
+  const conErr = finito(err)
+  if (foco === 'media') return { ...base, titulo: tit, valor: fmt(M.m), unidad, sub: subN, pasos: [...pBase, ...pMedia] }
+  if (foco === 'error') return { ...base, titulo: `${etq} (${unidad})`, valor: conErr ? `± ${fmt(err)}` : '–', unidad, sub: `media ${fmt(M.m)} · ${subN}`, pasos: [...pBase, ...pMedia, ...pErr] }
+  if (foco === 'rango') return { ...base, titulo: `Rango (${unidad})`, valor: conErr ? `${fmt(lo)} a ${fmt(hi)}` : '–', unidad, sub: conErr ? `media ${fmt(M.m)} ± ${fmt(err)} (${etq})` : subN, pasos: [...pBase, ...pMedia, ...pErr, ...(conErr ? [pRango] : [])] }
+  if (foco === 'log') return { ...base, titulo: `log₁₀ de la media`, valor: fl(L(M.m)), unidad: `log₁₀ ${unidad}`, sub: `media ${fmt(M.m)} ${unidad}`, pasos: [...pBase, ...pMedia, pLog] }
+  if (foco === 'rangolog') return { ...base, titulo: 'Rango en log₁₀', valor: conErr ? `${fl(L(lo))} a ${fl(L(hi))}` : '–', unidad: `log₁₀ ${unidad}`, sub: conErr ? `log₁₀ de ${fmt(lo)} a ${fmt(hi)} ${unidad}` : subN, pasos: [...pBase, ...pMedia, ...pErr, ...(conErr ? [pRango, pRangoLog] : [])] }
+  return { ...base, titulo: tit, valor: fmt(M.m), unidad, sub: conErr ? `± ${fmt(err)} (${etq}) · ${subN}` : subN, pasos: [...pBase, ...pMedia, ...pErr, ...(conErr ? [pRango] : []), pLog, ...(conErr ? [pRangoLog] : [])] }
 }
 
 // ---------- OD de cubeta (blanco y diluciones) ----------
@@ -413,108 +437,30 @@ export function fichaUfcReplica(r, o = {}) {
   if (r._estado === 'incontable') return { titulo: 'UFC/mL de la réplica', sujeto, valor: 'incontable', metodos: 'ufc', pasos: [...pasos, { titulo: 'Incontable', texto: `${C} colonias: más del doble del máximo contable (${p.max}). Las colonias se superponen y se subcuenta.` }] }
   pasos.push({ titulo: 'Concentración', formula: ['UFC/mL = ', v('C', 1), ' · ', v('D', 4), ' / ', v('V', 2)],
     cuenta: ['UFC/mL = ', v(C, 1), ' × ', v(sci(D), 4), ' / ', v(`${g(V)} mL`, 2), ` = ${sci(r.UFC_mL)}`] })
-  {
-    const x = Math.log10(r.UFC_mL), up = Math.sqrt(VAR_POI / C), uo = r._uOper, uc = Math.sqrt(up * up + uo * uo), U = 2 * uc
-    pasos.push({ titulo: 'Incertidumbre expandida (ISO 19036)', texto: `Contar colonias tiene error aunque se cuente bien (u_poisson), y pipetear y diluir agregan otro (u_oper, valor por defecto editable). Se combinan en log₁₀ y se expanden con k = 2 (≈ 95 %).`,
-      formula: ['u_poisson = 1 / (ln 10 · √C)   ;   u_c = √(u_poisson² + u_oper²)   ;   IC = 10^(log₁₀ N ± 2·u_c)'],
-      cuenta: [`u_poisson = 1 / (2,3026 · √${C}) = ${f3(up)} ; u_oper = ${f3(uo)} → u_c = ${f3(uc)} ; U = ${f3(U)} log₁₀`, `\nIC = 10^(${f2(x, 3)} ± ${f3(U)}) = ${sci(r.IC95_inf)} a ${sci(r.IC95_sup)} UFC/mL`],
-      esquema: { tipo: 'intervalo', lo: r.IC95_inf, m: r.UFC_mL, hi: r.IC95_sup, log: true } })
-  }
   const avisos = []
   if (r._estado === 'bajo' || r._estado === 'alto') avisos.push(`${C} colonias está ${r._estado === 'bajo' ? 'debajo' : 'arriba'} del rango contable (${p.min} a ${p.max}): es una estimación con error grande.`)
   if (o.dixon) avisos.push(`Marcada como atípica: ${o.dixon}`)
   if (o.fuera) avisos.push('Esta réplica está excluida del promedio.')
-  return { titulo: 'UFC/mL de la réplica', sujeto, valor: sci(r.UFC_mL), unidad: 'UFC/mL', sub: `log₁₀ = ${f2(r.log10)} · IC 95 % ${sci(r.IC95_inf)} a ${sci(r.IC95_sup)}`, metodos: 'ufc', pasos, avisos,
+  else avisos.push('El valor de la cepa en este tiempo es la media de las UFC/mL de sus réplicas (clic en el valor del tiempo, en Curva UFC vs t).')
+  return { titulo: 'UFC/mL de la réplica', sujeto, valor: sci(r.UFC_mL), unidad: 'UFC/mL', sub: `log₁₀ = ${f2(r.log10)}`, metodos: 'ufc', pasos, avisos,
     ajustes: [`rango ${p.min}–${p.max} colonias`, `${g(V * 1000, 4)} µL sembrados`] }
 }
 
-// UFC/mL de una cepa en un tiempo. Según la opción elegida: Σ C / Σ V con IC 95 % de ISO 19036,
-// o media geométrica de las réplicas con DE / EEM / IC 95 % (en log₁₀).
-const NOM_ERROR = { sd: 'DE', sem: 'EEM', ic95: 'IC 95 %' }
-function statsGeo(r, tipo) {
-  const lg = (r._vals || []).filter((x) => x > 0).map(Math.log10), n = lg.length, m = n ? media(lg) : NaN
-  const sd = n > 1 ? desvio(lg) : NaN, tt = n > 1 ? tCuantil(0.975, n - 1) : NaN, sem = n > 2 ? sd / Math.sqrt(n) : NaN
-  const bajo = (tipo === 'sem' || tipo === 'ic95') && n < 3
-  const err = bajo ? NaN : tipo === 'sem' ? sem : tipo === 'ic95' ? tt * sem : sd
-  return { lg, n, m, sd, tt, sem, err, bajo, tipo: NOM_ERROR[tipo] ? tipo : 'sd', etq: NOM_ERROR[tipo] || 'DE' }
-}
+// UFC/mL de una cepa en un tiempo: media aritmética de las UFC/mL de las réplicas ± su error (la misma ficha que la OD).
+// Cada número de la tabla abre SOLO su cálculo (foco).
 export function fichaUfcTiempo(r, o = {}) {
-  const f0 = fichaUfcTiempoCompleta(r, o)
-  const idx = (t) => f0.pasos.findIndex((p) => p.titulo.startsWith(t))
-  const geo = o.centro === 'geo'
-  if (o.foco === 'ic') {
-    if (geo) {
-      const sg = statsGeo(r, o.error)
-      const sel = f0.pasos.filter((p) => p.titulo.startsWith('Réplicas que entran') || p.titulo.startsWith('UFC/mL de cada') || p.titulo.startsWith('Error entre réplicas'))
-      return { ...f0, titulo: `${sg.etq} del tiempo`, valor: finito(sg.err) ? `± ${f3(sg.err)}` : '–', unidad: 'log₁₀', sub: finito(sg.err) ? `Intervalo: ${sci(10 ** (sg.m - sg.err))} a ${sci(10 ** (sg.m + sg.err))} UFC/mL` : '', pasos: sel }
-    }
-    const ic = icUfc(r)
-    const sel = f0.pasos.filter((p) => p.titulo.startsWith('Réplicas que entran') || p.titulo.startsWith('Incertidumbre'))
-    return { ...f0, titulo: 'IC 95 % del tiempo', valor: finito(ic.lo) ? `${sci(ic.lo)} a ${sci(ic.hi)}` : '–', unidad: 'UFC/mL', sub: TEXTO_IC_UFC[ic.tipo] || '', pasos: sel }
-  }
-  if (o.foco === 'log') {
-    const val = geo ? r.Media_geometrica : r.UFC_mL
-    return { ...f0, titulo: 'log₁₀ UFC/mL del tiempo', valor: f2(Math.log10(val), 3), unidad: 'log₁₀ UFC/mL', sub: '',
-      pasos: [...f0.pasos.slice(0, idx('Suma') + 1 || 2), { titulo: 'Logaritmo decimal', texto: 'En el gráfico se usa log₁₀ porque el crecimiento exponencial se ve como una recta.', formula: ['log₁₀ UFC/mL'], cuenta: [`log₁₀(${sci(val)}) = ${f2(Math.log10(val), 3)}`] }] }
-  }
-  return f0
-}
-function fichaUfcTiempoCompleta(r, o = {}) {
   const pool = r._pool || []
   const sujeto = `${r.Muestra} · T = ${r.T_h} h`
   if (!pool.length) return { titulo: 'UFC/mL del tiempo', sujeto, valor: '–', metodos: 'ufc', pasos: [{ titulo: 'Sin réplicas utilizables', texto: String(r.Estado || '') }] }
-  const S = r.Colonias_suma, V = r.Volumen_mL
-  const geo = o.centro === 'geo'
-  const ic = icUfc(r)
-  const pasos = [
-    { titulo: `Réplicas que entran (${pool.length} de ${r.Replicas})`, texto: `Todas contadas en la misma dilución. V = mL de suspensión original en cada siembra (volumen sembrado / dilución).${o.excluidas ? ` Quedan afuera: ${o.excluidas}.` : ''}`,
-      esquema: { tipo: 'replicas', tarjetas: pool.map((q) => ({ titulo: `Réplica ${q.Replica}`, c: q.C, v: q.D })) } },
-  ]
-  let sg = null
-  if (geo) {
-    sg = statsGeo(r, o.error)
-    const filas = pool.map((q) => (q.C > 0 ? `Réplica ${q.Replica}: ${q.C} / ${sci(q.D, 3)} mL = ${sci(q.C / q.D)} UFC/mL → log₁₀ = ${f2(Math.log10(q.C / q.D), 3)}` : `Réplica ${q.Replica}: 0 colonias → sin log₁₀, no entra en la media`))
-    pasos.push({ titulo: 'UFC/mL de cada réplica', texto: 'Cada réplica se calcula por separado: colonias / volumen de suspensión original sembrado. Después se pasa a log₁₀.',
-      formula: ['UFC/mLᵢ = ', v('Cᵢ', 1), ' / ', v('Vᵢ', 2), '   ;   xᵢ = log₁₀ UFC/mLᵢ'], cuenta: [filas.join('\n')] })
-    pasos.push({ titulo: 'Media geométrica (valor de este tiempo)', texto: 'Se promedian los log₁₀ de las réplicas; al volver a UFC/mL (10^media) es la media geométrica.',
-      formula: ['x̄ = Σ xᵢ / n   ;   media geométrica = 10^x̄'],
-      cuenta: [`x̄ = (${sg.lg.map((x) => f2(x, 3)).join(' + ')}) / ${sg.n} = ${f2(sg.m, 3)} → 10^${f2(sg.m, 3)} = ${sci(r.Media_geometrica)} UFC/mL`] })
-    const formulas = { sd: 'DE = √[ Σ(xᵢ − x̄)² / (n − 1) ]', sem: 'EEM = DE / √n', ic95: 'IC 95 % = x̄ ± t(0,975; n − 1) · DE / √n' }
-    const cuentas = []
-    if (sg.n > 1) cuentas.push(`DE = ${f3(sg.sd)} log₁₀ (n = ${sg.n})`)
-    if (sg.bajo) cuentas.push('Con menos de 3 réplicas el EEM y el IC 95 % no se calculan (la t de Student con n − 1 g.l. es muy grande): solo queda la DE.')
-    else if (sg.tipo === 'sem') cuentas.push(`EEM = ${f3(sg.sd)} / √${sg.n} = ${f3(sg.sem)} log₁₀`)
-    else if (sg.tipo === 'ic95') cuentas.push(`t(0,975; ${sg.n - 1}) = ${f2(sg.tt, 3)} ; ± ${f3(sg.tt)} · ${f3(sg.sd)} / √${sg.n} = ± ${f3(sg.err)} log₁₀`)
-    if (finito(sg.err)) cuentas.push(`Intervalo = 10^(${f2(sg.m, 3)} ± ${f3(sg.err)}) = ${sci(10 ** (sg.m - sg.err))} a ${sci(10 ** (sg.m + sg.err))} UFC/mL`)
-    pasos.push({ titulo: `Error entre réplicas (${sg.etq})`, texto: 'La variabilidad se mide entre las réplicas, en escala log₁₀ (los recuentos varían de forma multiplicativa).',
-      formula: [formulas[sg.tipo]], cuenta: [cuentas.join('\n')],
-      ...(finito(sg.err) ? { esquema: { tipo: 'intervalo', lo: 10 ** (sg.m - sg.err), m: r.Media_geometrica, hi: 10 ** (sg.m + sg.err), log: true, etiqueta: sg.etq } } : {}) })
-  } else {
-    pasos.push({ titulo: 'Suma de colonias / suma de volúmenes', texto: 'Media ponderada por volumen: las réplicas con más volumen pesan más y los ceros también cuentan.',
-      formula: ['UFC/mL = ', v('Σ C', 1), ' / ', v('Σ V', 2)],
-      cuenta: ['UFC/mL = ', v(`(${pool.map((q) => q.C).join(' + ')})`, 1), ' / ', v(`(${pool.map((q) => sci(q.D, 3)).join(' + ')})`, 2), '\n= ', v(S, 1), ' / ', v(`${sci(V, 3)} mL`, 2), ` = ${sci(r.UFC_mL)}`] })
-    if (S > 0) {
-      const x = Math.log10(r.UFC_mL)
-      pasos.push({ titulo: 'Incertidumbre de Poisson (error de contar)', texto: 'Aun contando bien, el número de colonias varía al azar. En escala log₁₀ su desviación es 1/(ln 10 · √C), con C = suma de colonias de las réplicas.',
-        formula: ['u_poisson = 1 / (ln 10 · √ΣC)'], cuenta: [`u_poisson = 1 / (2,3026 · √${S}) = ${f3(r.u_poisson)} log₁₀`] })
-      pasos.push({ titulo: 'Incertidumbre operativa y de matriz', texto: 'Pipeteo, diluciones y heterogeneidad de la muestra agregan variación que el conteo no explica. Se toma el mayor entre el valor por defecto (editable en «Más opciones» de Curva UFC vs t) y la variación observada entre réplicas por encima de la de Poisson.',
-        formula: ['u_oper = máx( u_oper por defecto ; √( s² − promedio(0,1886 / Cᵢ) ) )'],
-        cuenta: [finito(r.u_oper_est) ? `s = ${f3(r.DE_log10)} ; promedio(0,1886 / Cᵢ) = ${f3(r.Var_poisson_rep)} → variación en exceso = ${f3(r.u_oper_est)} log₁₀` : 'Con una sola réplica no se puede estimar la variación entre réplicas: se usa el valor por defecto.',
-          `\nu_oper = máx(${f3(r.u_oper_def)} ; ${finito(r.u_oper_est) ? f3(r.u_oper_est) : '–'}) = ${f3(r.u_oper)} log₁₀`] })
-      pasos.push({ titulo: 'Incertidumbre combinada y expandida (ISO 19036)', texto: 'Las dos componentes son independientes: se suman las varianzas. Con el factor de cobertura k = 2 se obtiene el IC 95 %, que en UFC/mL es asimétrico (el crecimiento microbiano es log-normal).',
-        formula: ['u_c = √(u_poisson² + u_oper²)   ;   U = 2 · u_c   ;   IC 95 % = 10^(log₁₀ N ± U)'],
-        cuenta: [`u_c = √(${f3(r.u_poisson)}² + ${f3(r.u_oper)}²) = ${f3(r.u_comb)} ; U = ${f3(r.U_exp)} log₁₀`, `\nIC = 10^(${f2(x, 3)} ± ${f3(r.U_exp)}) = ${sci(r.IC95_inf)} a ${sci(r.IC95_sup)} UFC/mL`],
-        esquema: { tipo: 'intervalo', lo: ic.lo, m: r.UFC_mL, hi: ic.hi, log: true, etiqueta: 'IC 95 % (ISO 19036)' } })
-    }
-  }
-  const valor = geo ? sci(r.Media_geometrica) : sci(r.UFC_mL)
-  const sub = geo
-    ? `log₁₀ = ${f2(sg.m, 3)}${finito(sg.err) ? ` · ${sg.etq} = ± ${f3(sg.err)} log₁₀` : ''}`
-    : `log₁₀ = ${f2(r.log10)}${finito(ic.lo) ? ` · ${TEXTO_IC_UFC[ic.tipo] || 'IC 95 %'}: ${sci(ic.lo)} a ${sci(ic.hi)}` : ''}`
-  return { titulo: geo ? 'UFC/mL del tiempo (media geométrica)' : 'UFC/mL del tiempo', sujeto, valor, unidad: 'UFC/mL', metodos: 'ufc', sub,
-    pasos, avisos: [...(o.estimadas ? [`Incluye réplicas estimadas fuera del rango contable: ${o.estimadas}.`] : [])],
-    ajustes: [geo ? 'valor: media geométrica' : 'valor: Σ C / Σ V'] }
+  const valores = pool.map((q) => ({ etiqueta: `réplica ${q.Replica}`, x: q.ufc }))
+  const detalle = { titulo: `UFC/mL de cada réplica (${pool.length} de ${r.Replicas})`,
+    texto: `Todas con la misma dilución. UFC/mL = C / V, con V = mL de suspensión original sembrados (volumen sembrado / dilución).${o.excluidas ? ` Quedan afuera: ${o.excluidas}.` : ''}`,
+    columnas: ['Réplica', 'Colonias C', 'V (mL)', 'UFC/mL = C / V'],
+    filas: pool.map((q) => [`réplica ${q.Replica}`, String(q.C), sci(q.D, 3), q.C > 0 ? `${q.C} / ${sci(q.D, 3)} = ${sci(q.ufc)}` : '0 colonias → 0']) }
+  return fichaMediaTiempo({ valores, t: r.T_h, nombre: r.Muestra, tipo: o.error || 'sd', unidad: 'UFC/mL', etiquetaValor: 'UFC/mL media', foco: o.foco || '', detalle, fmt: (x) => sci(x),
+    avisos: o.estimadas ? [`Incluye réplicas estimadas fuera del rango contable: ${o.estimadas}.`] : [], metodos: 'ufc' })
 }
+
 
 // Ajuste del modelo de crecimiento por recuento: cada número de la tabla abre SU cálculo (foco = el parámetro que se tocó):
 // y₀, μ, velocidad, td, λ, y máx, R², EE y n − p. Modelos: Linealizar log₁₀ (recta de ln N en la fase exponencial) y Baranyi y Roberts.
@@ -734,7 +680,11 @@ export function fichaConversion(cal, sentido, entrada, salida, o = {}) {
   const odUfc = sentido === 'od'
   const eqs = { clasico: ['log₁₀ UFC = m · OD + b', 'OD = (log₁₀ UFC − b) / m'], lineal: ['UFC = a + b · OD', 'OD = (UFC − a) / b'], proporcional: ['UFC = b · OD', 'OD = UFC / b'], potencia: ['log₁₀ UFC = a + b · log₁₀ OD', 'OD = 10^((log₁₀ UFC − a) / b)'] }[cal.modelo]
   return { titulo: odUfc ? 'OD → UFC/mL' : 'UFC/mL → OD', sujeto: o.nombre, valor: odUfc ? sci(salida) : g(salida, 4), unidad: odUfc ? 'UFC/mL' : 'OD', metodos: 'comb',
-    pasos: [{ titulo: 'Con la ecuación ajustada', texto: cal.ecuacion, formula: [odUfc ? eqs[0] : eqs[1]], cuenta: [odUfc ? `OD = ${g(entrada, 4)} → ${sci(salida)} UFC/mL` : `UFC/mL = ${sci(entrada)} → OD = ${g(salida, 4)}`] }],
+    pasos: [{ titulo: 'Con la ecuación ajustada', texto: cal.ecuacion, formula: [odUfc ? eqs[0] : eqs[1]], cuenta: [odUfc ? `OD = ${g(entrada, 4)} → ${sci(salida)} UFC/mL` : `UFC/mL = ${sci(entrada)} → OD = ${g(salida, 4)}`] },
+      ...(o.err && finito(o.err.U) ? [{ titulo: 'Error de la conversión (IC 95 % de predicción)', texto: `Intervalo de predicción de la calibración, en log₁₀ UFC/mL${odUfc ? '' : ' (se lleva a la OD invirtiendo la ecuación)'}: la incertidumbre de una UFC/mL predicha con la recta ajustada con ${cal.n} pares.`,
+        formula: ['U = t(0,975; n − k) · σ · √(1 + palanca)', 'palanca = 1/n + (x₀ − x̄)² / Sxx   (proporcional: x₀² / Σx²)'],
+        cuenta: [`t(0,975; ${cal.gl}) = ${f2(o.err.tt, 3)} ; σ = ${f3(cal.sigma)} log₁₀ ; palanca = ${f3(o.err.pal)}`, `U = ${f2(o.err.tt, 3)} · ${f3(cal.sigma)} · √(1 + ${f3(o.err.pal)}) = ${f3(o.err.U)} log₁₀`, odUfc ? `IC 95 % = ${sci(o.err.lo)} a ${sci(o.err.hi)} UFC/mL` : `IC 95 % = ${g(o.err.lo, 4)} a ${g(o.err.hi, 4)} OD`],
+        nota: 'En la recta y en el modelo log–log es exacto; en el lineal y el proporcional se aplica sobre el error típico en log₁₀ (aproximado). Fuera del rango calibrado la palanca crece y el intervalo se ensancha.' }] : [])],
     avisos: o.fuera ? [`Fuera del rango calibrado (OD ${g(cal.rango[0], 3)} a ${g(cal.rango[1], 3)}): es una extrapolación.`] : [] }
 }
 

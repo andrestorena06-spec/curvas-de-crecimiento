@@ -4,8 +4,8 @@
 // IC 95 %) y su rango; en log₁₀: el log₁₀ de esa media y el log₁₀ de los extremos del rango.
 // Cada número abre SOLO su cuenta: ficha(fila, foco) con foco 'media' | 'error' | 'rango' | 'log' | 'rangolog'.
 // ============================================================
-import { finito } from '../motor/analisis.js'
-import { fx } from '../utils.js'
+import { finito } from '../calculo/comun/analisis.js'
+import { fx } from '../comun/utils.js'
 import { Valor } from '../fichas/FichaCalculo.jsx'
 
 const L = (x) => (finito(x) && x > 0 ? Math.log10(x) : NaN)
@@ -16,7 +16,7 @@ export function TablaMediaTiempo({ titulo, filas, unidad, etqErr, fmt, ficha, no
   const c = (f, foco, txt) => <Valor f={() => ficha(f, foco)}>{txt}</Valor>
   return (
     <div className="tarjeta">
-      <h2>{titulo} <span className="ayuda" style={{ fontWeight: 400 }}>· clic en un valor: cómo se calculó</span></h2>
+      <h2>{titulo}</h2>
       <div className="tabla-scroll"><table className="tabla">
         <thead><tr>
           <th>Cepa</th><th className="num">t (h)</th>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { rellenoPocillo, useTema } from '../tema.js'
-import { LETRAS, ordenPocillo, sub } from '../utils.js'
+import { rellenoPocillo, useTema } from '../estilo/tema.js'
+import { LETRAS, ordenPocillo, sub } from '../comun/utils.js'
 import { Campo, Check, Icono, Modal, Num } from './base.jsx'
 
 export const DILUCIONES = [1, 2, 4, 5, 10, 20, 50, 100]

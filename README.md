@@ -20,6 +20,7 @@ Abrir en línea: **https://andrestorena06-spec.github.io/curvas-de-crecimiento/*
 - **Recuento de UFC**: serie de diluciones con volúmenes transferidos, una dilución por cepa y tiempo (sugerida o elegida a mano),
   coherencia entre diluciones (prueba binomial), UFC/mL de cada réplica (C · D / V) y valor de cada tiempo como media aritmética
   de las réplicas con DE, EEM o IC 95 % (igual que la OD; en log₁₀, el log₁₀ de la media y de los extremos de la barra) y test de atípicos.
+- **Cada número muestra su cálculo**: un clic abre la fórmula y la cuenta (en Baranyi y Huang, el resultado del ajuste en ln y el paso a log₁₀).
 - **OD + UFC**: ambas curvas con doble eje y calibración OD ↔ UFC/mL.
 - **Formato de publicación**: tablas de resultados de tres líneas y gráficos con ejes de marcas hacia afuera, listos para un informe.
 - **Gráficos personalizables** (textos, tamaños, ejes, colores de las cepas, fondo blanco) y exportación PNG/SVG; tablas a Excel.

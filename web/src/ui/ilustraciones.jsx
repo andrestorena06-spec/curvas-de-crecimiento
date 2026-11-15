@@ -1,5 +1,5 @@
 // Ilustraciones de las opciones del asistente (SVG con los colores del tema)
-import { useTema } from '../tema.js'
+import { useTema } from '../estilo/tema.js'
 
 const Marco = ({ children }) => <svg viewBox="0 0 200 110" width="190" height="104" aria-hidden>{children}</svg>
 

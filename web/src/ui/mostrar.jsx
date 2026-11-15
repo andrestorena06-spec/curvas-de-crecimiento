@@ -1,13 +1,14 @@
 // ============================================================
-// «Mostrar»: el MISMO grupo de la cinta en todos los gráficos con datos, siempre el primero y con los mismos botones:
-//   Puntos          el valor de cada tiempo (media de las réplicas, o Σ colonias / Σ volumen)
+// «Mostrar»: el MISMO botón de la cinta en todos los gráficos con datos (siempre el primero); abre un menú con:
+//   Puntos          el valor de cada tiempo (media de las réplicas)
 //   Réplicas        cada réplica (pocillo, serie o conteo) como un punto
 //   Barras de error la barra o banda de error
 //   Valor           el valor numérico escrito sobre cada punto
 //   Error           el error escrito sobre cada punto (solo, o junto al valor si «Valor» está prendido)
 // (más «Blanco» donde hay curva de blanco). Lo elegido se guarda en el experimento, por gráfico.
 // ============================================================
-import { BotonCinta, Grupo, OpcionesCinta } from './cinta.jsx'
+import { BotonCinta, Grupo, MenuCinta, OpcionesCinta, SeccionMenu } from './cinta.jsx'
+import { ERRORES_UFC } from '../calculo/ufc/index.js'
 import { useOpcion } from './opciones.js'
 
 export const MOSTRAR_DEF = { puntos: true, replicas: false, barras: true, valor: false, error: false, blanco: false }
@@ -32,33 +33,28 @@ export const conEtiquetas = (m) => !!(m.valor || m.error)
 export function GrupoMostrar({ m, set, blanco = false, sinReplicas = false, notas = {} }) {
   const B = (k, simbolo, texto, tip) => <BotonCinta key={k} simbolo={simbolo} texto={texto} activo={!!m[k]} onClick={() => set(k, !m[k])} tip={notas[k] || tip} />
   return (
-    <Grupo titulo="Mostrar">
-      {B('puntos', '•', 'Puntos', 'El valor de cada tiempo (media de las réplicas, o Σ colonias / Σ volumen)')}
+    <Grupo titulo="Ver"><MenuCinta icono="ojo" texto="Mostrar" tip="Elementos del gráfico" ancho={430}><SeccionMenu titulo="Mostrar">
+      {B('puntos', '•', 'Puntos', 'El valor de cada tiempo (media de las réplicas)')}
       {!sinReplicas && B('replicas', '⋮⋮', 'Réplicas', 'Cada réplica (pocillo, serie o conteo) como un punto')}
       {B('barras', '±', 'Barras de error', 'Barra o banda de error de cada punto')}
       {B('valor', '12', 'Valor', 'Escribir el valor sobre cada punto')}
       {B('error', '±12', 'Error', 'Escribir el error sobre cada punto (junto al valor si «Valor» está prendido)')}
       {blanco && B('blanco', 'B', 'Blanco', 'La curva del blanco: la OD leída del medio sin inocular, antes de restarla')}
-    </Grupo>
+    </SeccionMenu></MenuCinta></Grupo>
   )
 }
 
-// «Tipo de error»: el MISMO grupo (mismo nombre y mismos botones) en todos los gráficos, de OD y de UFC.
+// «Incertidumbre»: el MISMO botón en todos los gráficos de OD y de UFC; abre la elección del tipo de error (DE, EEM o IC 95 %).
 // Es un solo valor por magnitud: el de la OD se guarda en 'curva.error' y el de las UFC en aj.ufc_err; se puede cambiar desde cualquier pantalla.
-// fijo: con Σ colonias / Σ volumen la barra es siempre el IC 95 % del conteo (Poisson), no se elige.
-export function GrupoTipoError({ valor, onChange, fijo = false, nota = '' }) {
-  if (fijo) return (
-    <Grupo titulo="Tipo de error">
-      <OpcionesCinta valor="ic95" onChange={() => {}} opciones={[['ic95', 'IC 95 %', 'IC', null, 'Con Σ colonias / Σ volumen la barra es el IC 95 % del conteo (10^(log₁₀ N ± 2·u_c), con el error de Poisson y el operativo; ISO 19036)\nPara elegir DE o EEM, usá «Media geométrica» en Curva UFC vs t']]} />
-    </Grupo>
-  )
+export function GrupoTipoError({ valor, onChange, nota = '' }) {
+  const t = ERRORES_UFC[valor] ? valor : 'sd'
   return (
-    <Grupo titulo="Tipo de error">
+    <Grupo titulo="Incertidumbre"><MenuCinta icono={{ sd: 'de', sem: 'eem', ic95: 'ic' }[t]} texto={ERRORES_UFC[t]} ancho={300} tip={'Incertidumbre\nTipo de error de las barras'}><SeccionMenu titulo="Tipo de error">
       <OpcionesCinta valor={valor} onChange={onChange} opciones={[
         ['sd', 'DE', 's', null, 'Desviación estándar\nCuánto se dispersan las réplicas entre sí' + nota],
         ['sem', 'EEM', 's/√n', null, 'Error estándar de la media = DE / √n\nIncertidumbre de la media' + nota],
         ['ic95', 'IC 95 %', 'IC', null, 'Intervalo de confianza del 95 %\nmedia ± t(0,975; n − 1) × DE / √n' + nota],
       ]} />
-    </Grupo>
+    </SeccionMenu></MenuCinta></Grupo>
   )
 }

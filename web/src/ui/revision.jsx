@@ -2,7 +2,7 @@
 // Cada comentario guarda la pestaña, el rectángulo (en % de la ventana y en píxeles de la página),
 // el texto que había debajo y el título de la sección. Se exportan como Markdown (copiar o descargar).
 import { useEffect, useRef, useState } from 'react'
-import { descargarTexto } from '../utils.js'
+import { descargarTexto } from '../comun/utils.js'
 import { Icono } from './base.jsx'
 
 const CLAVE = 'curvas-crecimiento-v2-revision'

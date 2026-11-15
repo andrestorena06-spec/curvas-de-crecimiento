@@ -1,6 +1,6 @@
 // Grupo de la cinta para llevar la OD de un lector de placas a 1 cm de camino óptico
-import { caminoOptico } from '../modelo.js'
-import { fx } from '../utils.js'
+import { caminoOptico } from '../datos/experimento.js'
+import { fx } from '../comun/utils.js'
 import { Num } from './base.jsx'
 import { BotonCinta, CampoCinta, Grupo } from './cinta.jsx'
 

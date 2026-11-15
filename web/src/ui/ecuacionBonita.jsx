@@ -3,8 +3,8 @@
 // y sin conexión. Es el ÚNICO formato de ecuación del programa: todas las pantallas usan estos armadores.
 // Todo va en log₁₀ (el motor ajusta en ln: μ₁₀ = μ / ln 10, η = h₀ / ln 10).
 // ============================================================
-import { finito } from '../motor/analisis.js'
-import { fs } from '../utils.js'
+import { finito } from '../calculo/comun/analisis.js'
+import { fs } from '../comun/utils.js'
 
 const num = (x, d = 4) => fs(x, d)
 const Mn = ({ x, d }) => <mn>{(typeof x === 'string' ? x : num(x, d)).replace(/^-/, '−')}</mn>
@@ -80,8 +80,6 @@ export function EcCalibracion({ c }) {
   const OD = <mi mathvariant="normal">OD</mi>, UFC = <mi mathvariant="normal">UFC</mi>
   if (c.modelo === 'clasico') return <Ec><Log10 />{UFC}<mo>=</mo><Mn x={c.coef.m} /><mo>·</mo>{OD}<Sg x={c.coef.b} /></Ec>
   if (c.modelo === 'lineal') return <Ec>{UFC}<mo>=</mo><Sci x={c.coef.a} /><mo>{c.coef.b < 0 ? '−' : '+'}</mo><Sci x={Math.abs(c.coef.b)} /><mo>·</mo>{OD}</Ec>
-  if (c.modelo === 'proporcional') return <Ec>{UFC}<mo>=</mo><Sci x={c.coef.b} /><mo>·</mo>{OD}</Ec>
-  if (c.modelo === 'potencia') return <Ec><Log10 />{UFC}<mo>=</mo><Mn x={c.coef.a} /><Sg x={c.coef.b} /><mo>·</mo><Log10 />{OD}</Ec>
   return <Ec><mtext>{c.ecuacion}</mtext></Ec>
 }
 

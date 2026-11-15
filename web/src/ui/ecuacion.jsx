@@ -4,12 +4,12 @@
 // (como la de DMFit) con el rango y el intervalo que se elijan, exportable a Excel o CSV.
 // ============================================================
 import { useState } from 'react'
-import { finito } from '../motor/analisis.js'
+import { finito } from '../calculo/comun/analisis.js'
 import { Campo, Modal, Num } from './base.jsx'
-import { excelMatriz } from '../excel.js'
-import { descargarBlob, descargarTexto, fx, sciCorto } from '../utils.js'
+import { excelMatriz } from '../datos/excel.js'
+import { descargarBlob, descargarTexto, fx, sciCorto } from '../comun/utils.js'
 import { EcModelo } from './ecuacionBonita.jsx'
-import { MODELOS_UFC } from '../motor/ufc.js'
+import { MODELOS_UFC } from '../calculo/ufc/index.js'
 import { useOpcion } from './opciones.js'
 import { BotonCinta, CampoCinta } from './cinta.jsx'
 

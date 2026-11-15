@@ -7,11 +7,11 @@
 //   tira       → valores de réplicas sobre una recta, con la media (± DE) y el sospechoso marcado
 //   barras     → colonias observadas y esperadas por réplica (sobredispersión)
 // ============================================================
-import { finito } from '../motor/analisis.js'
-import { useTema } from '../tema.js'
-import { Grafico } from '../ui/grafico.jsx'
-import { fs } from '../utils.js'
-import { sci } from './definiciones.js'
+import { finito } from '../calculo/comun/analisis.js'
+import { useTema } from '../estilo/tema.js'
+import { Grafico } from '../ui/graficos/grafico.jsx'
+import { fs } from '../comun/utils.js'
+import { sci } from './index.js'
 
 const colorDe = (T, c) => (!c ? T.acento : c.startsWith('#') ? c : c === 'tenue' ? T.eje : T[c] || c)
 

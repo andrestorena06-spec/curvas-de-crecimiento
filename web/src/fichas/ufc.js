@@ -17,7 +17,7 @@ export function fichaUfcReplica(r, o = {}) {
     { titulo: 'Diluciones contadas', texto: `Todas las réplicas de ${r.Muestra} a T = ${r.T_h} h usan la misma dilución, ${r._manual ? 'elegida a mano' : `la que tiene más réplicas dentro del rango contable (${p.min} a ${p.max} colonias)`}.`,
       esquema: { tipo: 'diluciones', columnas: ent.map(([kk, c]) => ({ etiqueta: etqCol(p, kk), colonias: c, estado: kk === k ? 'elegida' : c > 2 * p.max ? 'incontable' : c >= p.min && c <= p.max ? 'rango' : '' })) } },
   ]
-  if (r._estado === 'sin_dilucion') return { titulo: 'UFC/mL de la réplica', sujeto, valor: '–', metodos: 'ufc', pasos: [...pasos, { titulo: 'Sin conteo en la dilución de la cepa', texto: 'Esta réplica no tiene conteo en la dilución elegida para su cepa y tiempo: no se calcula con otra.' }] }
+  if (r._estado === 'sin_dilucion') return { titulo: 'UFC/mL de la réplica', sujeto, valor: '–', metodos: 'ufc', pasos: [...pasos, { titulo: 'Sin recuento en la dilución de la cepa', texto: 'Esta réplica no tiene recuento en la dilución elegida para su cepa y tiempo: no se calcula con otra.' }] }
   pasos.push({ titulo: 'Volumen de suspensión original sembrado', texto: `Se sembraron V = ${g(V * 1000, 4)} µL de la dilución ${dil(D)}: es como haber sembrado V/D mL de la suspensión original.`,
     formula: [v('V', 2), ' / ', v('D', 4), ' = mL de suspensión original'], cuenta: [v(`${g(V)} mL`, 2), ' / ', v(sci(D), 4), ' = ', `${sci(Vo, 3)} mL`] })
   if (r._estado === 'cero') {

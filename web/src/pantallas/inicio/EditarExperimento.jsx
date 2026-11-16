@@ -44,7 +44,7 @@ export function EditarExperimento({ s, onClose }) {
         <Campo label="Notas" style={{ gridColumn: '1 / -1' }}><textarea rows={3} value={cond.notas || ''} placeholder="Observaciones del ensayo, inóculo, agitación…" onChange={(e) => set('notas', e.target.value)} /></Campo>
       </div>
       <h3>Cepas o muestras</h3>
-      <p className="ayuda" style={{ marginTop: -4 }}>Al renombrar una cepa el cambio se aplica en todo el experimento: pocillos, placas, lecturas, conteos y colores.</p>
+      <p className="ayuda" style={{ marginTop: -4 }}>Al renombrar una cepa el cambio se aplica en todo el experimento: pocillos, placas, lecturas, recuentos y colores.</p>
       <div className="lista-cepas-edit">
         {exp.cepas.map((c) => {
           const usos = usosDeCepa(exp, c)

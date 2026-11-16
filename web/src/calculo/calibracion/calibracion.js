@@ -10,7 +10,6 @@ export const MODELOS_CALIB = {
 }
 
 const n4 = (x) => String(Number(x.toPrecision(4))).replace('.', ',')
-const e3 = (x) => x.toExponential(3).replace('.', ',').replace('e+', 'E+').replace('e-', 'E-')
 function regresion(x, y) {
   const mx = media(x), my = media(y)
   let sxx = 0, sxy = 0
@@ -22,6 +21,12 @@ function regresion(x, y) {
 
 // pares: [{ od, ufc }] con ufc > 0 (la OD puede ser ≤ 0 salvo en los modelos log–log y proporcional).
 // La OD es la corregida por el blanco, sin suavizar ni normalizar (ver paresOdUfc en Combinado.jsx).
+// Mínimo de pares: con 2 se obtiene la recta, pero pasa exactamente por los dos puntos (R² = 1 sin significado, sin error);
+// el error típico y el intervalo de predicción necesitan 3 (n − 2 ≥ 1 grados de libertad) y recién con 5 o más son útiles.
+export const PARES_MIN = 2, PARES_ERROR = 3, PARES_RECOMENDADOS = 5
+export const avisoPares = (n) => (n < PARES_ERROR
+  ? `Con ${n} pares la recta pasa exactamente por los puntos: no se puede calcular el error ni el intervalo de predicción. Hacen falta al menos ${PARES_ERROR} pares para estimarlos (se recomiendan ${PARES_RECOMENDADOS} o más).`
+  : n < PARES_RECOMENDADOS ? `Con ${n} pares el intervalo de predicción es muy ancho (n − 2 = ${n - 2} grado${n - 2 > 1 ? 's' : ''} de libertad): se recomiendan ${PARES_RECOMENDADOS} o más.` : '')
 export function ajustarCalibracion(pares, modelo) {
   // la OD puede ser negativa (lecturas por debajo del blanco); solo el modelo log–log necesita OD > 0
   const p = pares.filter((q) => finito(q.od) && (modelo !== 'potencia' || q.od > 0) && finito(q.ufc) && q.ufc > 0)
@@ -30,7 +35,7 @@ export function ajustarCalibracion(pares, modelo) {
   // el modelo proporcional (por el origen) supone UFC = 0 con OD = 0: con OD ≤ 0 no tiene sentido físico
   const odNoPos = p.filter((q) => q.od <= 0).length
   if (modelo === 'proporcional' && odNoPos) return { ...vacio, motivo: `El modelo proporcional (por el origen) no admite OD ≤ 0 (${odNoPos} de ${p.length} par${p.length > 1 ? 'es' : ''} con OD ≤ 0): una OD nula o negativa daría UFC ≤ 0. Usá la recta log₁₀ UFC = m·OD + b o el modelo lineal, o revisá el blanco.` }
-  if (p.length < 3) return { ...vacio, motivo: sinPositiva ? `Hacen falta al menos 3 pares OD–UFC con OD > 0: el modelo log–log no admite OD ≤ 0 (${sinPositiva} par${sinPositiva > 1 ? 'es' : ''} con OD ≤ 0). Usá la recta log₁₀ UFC = m·OD + b o el modelo lineal.` : 'Hacen falta al menos 3 pares OD–UFC.' }
+  if (p.length < 2) return { ...vacio, motivo: sinPositiva ? `Hacen falta al menos 2 pares OD–UFC con OD > 0: el modelo log–log no admite OD ≤ 0 (${sinPositiva} par${sinPositiva > 1 ? 'es' : ''} con OD ≤ 0). Usá la recta log₁₀ UFC = m·OD + b o el modelo lineal.` : 'Hacen falta al menos 2 pares OD–UFC.' }
   const od = p.map((q) => q.od), ufc = p.map((q) => q.ufc), lg = ufc.map(Math.log10)
   let pred, coef, eq, inv
   if (modelo === 'clasico') {
@@ -68,9 +73,9 @@ export function ajustarCalibracion(pares, modelo) {
     return finito(U) && finito(v) && v > 0 ? { U, lo: v / 10 ** U, hi: v * 10 ** U, tt, pal } : { U: NaN, lo: NaN, hi: NaN, tt, pal }
   }
   return {
-    ok: true, modelo, n: p.length, nR2: iok.length, sinPred, coef, ecuacion: eq, pred, inv, sigma, errorPred, gl, R2: sst > 0 ? 1 - sse / sst : NaN,
-    rango: [Math.min(...od), Math.max(...od)], rangoUfc: [Math.min(...ufc), Math.max(...ufc)], errorRelPct: (10 ** (finito(sigma) ? sigma : 0) - 1) * 100,
-    aviso: sinPred ? `${sinPred} par${sinPred > 1 ? 'es' : ''} con UFC predicha ≤ 0: no entra${sinPred > 1 ? 'n' : ''} en el R² ni en el error típico.` : '',
+    ok: true, modelo, n: p.length, nR2: iok.length, sinPred, coef, ecuacion: eq, pred, inv, sigma, errorPred, gl, R2: gl > 0 && sst > 0 ? 1 - sse / sst : NaN,
+    rango: [Math.min(...od), Math.max(...od)], rangoUfc: [Math.min(...ufc), Math.max(...ufc)], errorRelPct: finito(sigma) ? (10 ** sigma - 1) * 100 : NaN,
+    aviso: [sinPred ? `${sinPred} par${sinPred > 1 ? 'es' : ''} con UFC predicha ≤ 0: no entra${sinPred > 1 ? 'n' : ''} en el R² ni en el error típico.` : '', avisoPares(p.length)].filter(Boolean).join(' '),
   }
 }
 

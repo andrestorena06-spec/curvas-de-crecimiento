@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { rellenoPocillo, useTema } from '../estilo/tema.js'
-import { LETRAS, ordenPocillo, sub } from '../comun/utils.js'
+import { LETRAS, fx, ordenPocillo, sub } from '../comun/utils.js'
 import { Campo, Check, Icono, Modal, Num } from './base.jsx'
 
 export const DILUCIONES = [1, 2, 4, 5, 10, 20, 50, 100]
@@ -94,14 +94,14 @@ export function PlacaEditor({ layout, onAsignar, cepas, colores, disponibles = n
                       onMouseEnter={() => ini && setAct({ f, c })}>
                       <div className={`pozo ${enRect(f, c) || enExtra.has(p) ? 'sel' : ''} ${!ok(p) ? 'vacio-poz' : ''} ${info?.blanco ? 'blanco' : ''}`}
                         style={{ width: W, height: compacta ? 44 : 50, fontSize: compacta ? 10.5 : undefined, background: col ? rellenoPocillo(col, T) : undefined, borderColor: col || undefined }}
-                        data-tip={info?.muestra ? `${p}: ${info.muestra}${info.blanco ? ' (blanco)' : ` · réplica ${reps[p]}`}${Number(info.factor) > 1 ? `\nOD leída sobre una dilución 1:${info.factor}` : ''}${Number.isFinite(v) ? `\nOD leída: ${v.toFixed(3)}` : ''}` : undefined}>
+                        data-tip={info?.muestra ? `${p}: ${info.muestra}${info.blanco ? ' (blanco)' : ` · réplica ${reps[p]}`}${Number(info.factor) > 1 ? `\nOD leída sobre una dilución 1:${info.factor}` : ''}${Number.isFinite(v) ? `\nOD leída: ${fx(v, 3)}` : ''}` : undefined}>
                         {!ok(p) ? <small>{p}<br />sin datos</small> : info?.muestra ? (
                           <>
                             <b style={{ color: T.texto }}>{info.blanco ? 'Blanco' : info.muestra}</b>
                             <small>{info.blanco ? p : `${p} · ${sub(reps[p])}`}{Number(info.factor) > 1 ? ` · ×${info.factor}` : ''}</small>
                           </>
                         ) : (
-                          <><small>{p}</small>{Number.isFinite(v) && <small className="mono">{v.toFixed(3)}</small>}</>
+                          <><small>{p}</small>{Number.isFinite(v) && <small className="mono">{fx(v, 3)}</small>}</>
                         )}
                       </div>
                     </td>

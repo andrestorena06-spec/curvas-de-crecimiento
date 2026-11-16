@@ -3,7 +3,7 @@ import { ACEPTA_LIBRO, TEXTO_FORMATOS } from '../../datos/libro.js'
 import { hojasDe, leerArchivo } from '../../calculo/od/lectura.js'
 import { estadoVacio } from '../../calculo/od/pipeline.js'
 import { Encabezado, Icono, Sel, Vacio, ZonaCarga } from '../../ui/base.jsx'
-import { BotonCinta, CampoCinta, Cinta, Grupo, Mosaico, OpcionesCinta } from '../../ui/cinta.jsx'
+import { BotonCinta, CampoCinta, Cinta, Grupo } from '../../ui/cinta.jsx'
 import { GrupoCamino } from '../../ui/camino.jsx'
 import { PlacaEditor, numerarReplicas } from '../../ui/placa.jsx'
 import { fx } from '../../comun/utils.js'
@@ -70,7 +70,7 @@ export function ArchivoTecan({ s }) {
       {d && (
         <>
           <div className="grid-kpi" style={{ marginTop: 16 }}>
-            <div className="kpi"><small>Archivo</small><b style={{ fontSize: 14 }}>{t.archivo?.nombre}</b></div>
+            <div className="kpi"><small>Archivo</small><b style={{ fontSize: 14.5 }}>{t.archivo?.nombre}</b></div>
             <div className="kpi"><small>Pocillos con datos</small><b>{Object.keys(d.pocillos).length}</b></div>
             <div className="kpi"><small>Mediciones por pocillo</small><b>{d.tiempos.length}</b></div>
             <div className="kpi"><small>Duración</small><b>{fx(dur, 2)} h</b></div>

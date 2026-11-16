@@ -1,37 +1,25 @@
 // Fichas «Cómo se calculó»: formato de números y media ± error de réplicas (comunes a OD y UFC).
 // Una ficha: { titulo, sujeto, valor, unidad, sub, que, pasos: [{ titulo, texto, formula, cuenta, esquema, nota }], avisos, ajustes, metodos }.
-import { desvio, finito, media } from '../calculo/comun/analisis.js'
+import { finito, media } from '../calculo/comun/analisis.js'
 import { AYUDA, PARAMS } from '../app/ayuda.js'
-import { N_MIN_EEM } from '../calculo/comun/estadistica.js'
-import { fs, fx, tCuantil } from '../comun/utils.js'
+import { N_MIN_EEM, resumenReplicas } from '../calculo/comun/estadistica.js'
+import { fs, fx, sci } from '../comun/utils.js'
 
 // ---------- formato ----------
-const SUP = '⁰¹²³⁴⁵⁶⁷⁸⁹'
-const sup = (k) => String(k).replace('-', '⁻').replace(/\d/g, (d) => SUP[Number(d)])
-// notación científica legible (5,83 × 10⁶); de 0,001 a 9999 se escribe el número tal cual
-export function sci(x, d = 2) {
-  if (!finito(x)) return '–'
-  if (x === 0) return '0'
-  let e = Math.floor(Math.log10(Math.abs(x)))
-  if (e >= -3 && e <= 3) return fs(x, d + 1)
-  let m = x / 10 ** e
-  if (Math.abs(Number(m.toFixed(d))) >= 10) { m /= 10; e += 1 }
-  return `${m.toFixed(d).replace('.', ',')} × 10${sup(e)}`
-}
+export { sci }
 export const g = (x, d = 4) => fs(x, d)         // cifras significativas
 export const f2 = (x, d = 2) => fx(x, d)        // decimales fijos
 export const v = (t, c) => ({ v: String(t), c }) // variable coloreada
 export const hs = (t) => `${fx(t, 2)} h`
 // dilución: entera (1/125, 1/15.625) mientras se pueda leer; si no, en potencia de 10
-export const dil = (D) => (Math.abs(D - 1) < 1e-9 ? 'sin diluir' : Math.abs(D - Math.round(D)) < 1e-6 && D < 1e7 ? `1/${Math.round(D).toLocaleString('es-AR')}` : `1/${sci(D, 2)}`)
+export const dil = (D) => (Math.abs(D - 1) < 1e-9 ? 'sin diluir' : Math.abs(D - Math.round(D)) < 1e-6 && D < 1e7 ? `1/${String(Math.round(D)).replace(/\B(?=(\d{3})+(?!\d))/g, '\u202F')}` : `1/${sci(D, 2)}`)
 export const avisosDe = (r) => String(r?.aviso || '').split('; ').filter(Boolean)
-const lista = (xs, d = 4) => xs.map((x) => g(x, d)).join(' ; ')
 
 // ---------- media ± error de varios valores (réplicas) ----------
 // valores: [{ etiqueta, x }]; tipo: 'sd' | 'sem' | 'ic95'
 export function pasosMedia(valores, unidad, tipo = 'sd', fmt = g) {
-  const xs = valores.map((q) => q.x), n = xs.length, m = media(xs), sd = n > 1 ? desvio(xs) : NaN
-  const tc = n >= N_MIN_EEM ? tCuantil(0.975, n - 1) : NaN
+  // los números salen de resumenReplicas (calculo/comun/estadistica.js): la ficha solo muestra la cuenta
+  const xs = valores.map((q) => q.x), n = xs.length, est = resumenReplicas(xs), m = est.m, sd = est.sd, tc = est.tt
   const pasos = [
     { titulo: `Los ${n} valores`, texto: valores.map((q) => `${q.etiqueta}: ${fmt(q.x)}`).join(' · '),
       esquema: { tipo: 'tira', valores: valores.map((q) => ({ x: q.x, etiqueta: q.etiqueta })), media: m, de: sd, unidad } },
@@ -43,7 +31,7 @@ export function pasosMedia(valores, unidad, tipo = 'sd', fmt = g) {
     if (tipo !== 'sd' && n < N_MIN_EEM) pasos.push({ titulo: tipo === 'sem' ? 'Error estándar de la media' : 'Intervalo de confianza del 95 %', texto: `Con ${n} réplicas no se calcula: hacen falta al menos ${N_MIN_EEM}.` })
     if (tipo !== 'sd' && n >= N_MIN_EEM) pasos.push({ titulo: tipo === 'sem' ? 'Error estándar de la media' : 'Intervalo de confianza del 95 % de la media',
       formula: [tipo === 'sem' ? 'EEM = DE / √n' : 'IC 95 % = ± t(0,975; n − 1) · DE / √n'],
-      cuenta: [tipo === 'sem' ? `EEM = ${fmt(sd)} / √${n} = ${fmt(sd / Math.sqrt(n))}` : `IC 95 % = ± ${g(tc, 4)} × ${fmt(sd)} / √${n} = ± ${fmt((tc * sd) / Math.sqrt(n))}`] })
+      cuenta: [tipo === 'sem' ? `EEM = ${fmt(sd)} / √${n} = ${fmt(est.sem)}` : `IC 95 % = ± ${g(tc, 4)} × ${fmt(sd)} / √${n} = ± ${fmt(est.ic)}`] })
   }
   return { pasos, m, sd, n, tc }
 }

@@ -86,7 +86,6 @@ export const ICONO_DE_SIMBOLO = {
   '▦': 'fases', '▥': 'fases', B: 'blanco', '−B': 'restarBlanco', '✓B': 'blancoOk', '≤': 'odmax', '≈': 'suavizar', '⇢': 'normalizar', 't↔': 'desplazar',
   '1 cm': 'camino', '•': 'puntos', '⋮⋮': 'replicas', s: 'de', 's/√n': 'eem', IC: 'ic', 'm₁': 'mcurv', 'OD₀': 'od0',
 }
-export const hayIcono = (n) => !!D[n]
 
 export function Icono({ n, size = 18, ancho = 1.7, style }) {
   const d = D[n] || D.info

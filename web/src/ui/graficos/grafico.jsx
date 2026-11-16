@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { TEMAS, useTema, mezclar } from '../../estilo/tema.js'
-import { fmtTick, fx, ticks } from '../../comun/utils.js'
+import { fin, fmtTick, fx, ticks } from '../../comun/utils.js'
 import { ModalGuardarImagen, useGraficoCtx } from './guardarImagen.jsx'
 import { Icono } from '../base.jsx'
 
@@ -22,7 +22,6 @@ export function CuadriculaPantalla({ tx, ty, x0, x1, y0, y1, px, py, L, R, W, TO
   )
 }
 
-const fin = Number.isFinite
 
 // Ancho real del contenedor: el gráfico se dibuja a tamaño 1:1 (sin escalar) para que el texto
 // tenga el mismo tamaño que el resto del programa, sea cual sea el ancho de la ventana.
@@ -358,7 +357,7 @@ export function Grafico(props) {
           <button onClick={() => { const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, dx = (x1 - x0) / 4, dy = (y1 - y0) / 4; setMenu(null); setZoom({ x0: cx - dx, x1: cx + dx, y0: cy - dy, y1: cy + dy }) }}><Icono n="mas" size={15} />Acercar</button>
           {zoom && <button onClick={() => { const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, dx = (x1 - x0), dy = (y1 - y0); setMenu(null); setZoom({ x0: cx - dx, x1: cx + dx, y0: cy - dy, y1: cy + dy }) }}><Icono n="menos" size={15} />Alejar</button>}
           {zoom && <button onClick={() => { setMenu(null); setZoom(null) }}><Icono n="refrescar" size={15} />Vista completa</button>}
-          <div className="ayuda solo-compu" style={{ padding: '6px 10px', fontSize: 11.5, maxWidth: 240 }}>Arrastrá para acercar; con zoom, arrastrá para moverte (Shift + arrastrar acerca más). Doble clic: vista completa.</div>
+          <div className="ayuda solo-compu" style={{ padding: '6px 10px', fontSize: 12.5, maxWidth: 240 }}>Arrastrá para acercar; con zoom, arrastrá para moverte (Shift + arrastrar acerca más). Doble clic: vista completa.</div>
         </div>
       )}
       {guardar && (

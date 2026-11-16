@@ -1,7 +1,7 @@
 // ============================================================
 // «Mostrar»: el MISMO botón de la cinta en todos los gráficos con datos (siempre el primero); abre un menú con:
 //   Puntos          el valor de cada tiempo (media de las réplicas)
-//   Réplicas        cada réplica (pocillo, serie o conteo) como un punto
+//   Réplicas        cada réplica (pocillo, serie o recuento) como un punto
 //   Barras de error la barra o banda de error
 //   Valor           el valor numérico escrito sobre cada punto
 //   Error           el error escrito sobre cada punto (solo, o junto al valor si «Valor» está prendido)
@@ -35,7 +35,7 @@ export function GrupoMostrar({ m, set, blanco = false, sinReplicas = false, nota
   return (
     <Grupo titulo="Ver"><MenuCinta icono="ojo" texto="Mostrar" tip="Elementos del gráfico" ancho={430}><SeccionMenu titulo="Mostrar">
       {B('puntos', '•', 'Puntos', 'El valor de cada tiempo (media de las réplicas)')}
-      {!sinReplicas && B('replicas', '⋮⋮', 'Réplicas', 'Cada réplica (pocillo, serie o conteo) como un punto')}
+      {!sinReplicas && B('replicas', '⋮⋮', 'Réplicas', 'Cada réplica (pocillo, serie o recuento) como un punto')}
       {B('barras', '±', 'Barras de error', 'Barra o banda de error de cada punto')}
       {B('valor', '12', 'Valor', 'Escribir el valor sobre cada punto')}
       {B('error', '±12', 'Error', 'Escribir el error sobre cada punto (junto al valor si «Valor» está prendido)')}

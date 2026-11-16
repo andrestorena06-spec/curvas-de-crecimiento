@@ -3,7 +3,8 @@
 // por 12 columnas (1–12) con la densidad óptica de cada pocillo. Cada lectura tiene su tiempo; varias lecturas
 // forman la curva de cada pocillo.
 // ============================================================
-import { LETRAS, convertirNumero, pocillos96 } from './lectura.js'
+import { convertirNumero } from './lectura.js'
+import { LETRAS, pocillos96 } from '../../comun/utils.js'
 import { finito } from '../comun/analisis.js'
 
 const aTexto = (celda) => {
@@ -61,50 +62,3 @@ export function tiempoDeNombre(nombre, indice) {
   return indice
 }
 
-// Une las lecturas (cada una con su tiempo en horas) en {tiempos (s), pocillos}
-export function datosDeLecturas(lecturas) {
-  const ok = lecturas.filter((l) => finito(Number(l.t)) && l.datos?.length)
-  if (!ok.length) return null
-  const tiempos = [...new Set(ok.map((l) => Math.round(Number(l.t) * 3600 * 1000) / 1000))].sort((a, b) => a - b)
-  const pocillos = {}
-  for (const p of pocillos96()) {
-    const fila = tiempos.map(() => NaN)
-    let hay = false
-    ok.forEach((l) => {
-      const d = l.datos.find((x) => x.Pocillo === p)
-      if (d && finito(d.OD)) { fila[tiempos.indexOf(Math.round(Number(l.t) * 3600 * 1000) / 1000)] = d.OD; hay = true }
-    })
-    if (hay) pocillos[p] = fila
-  }
-  return { tiempos, pocillos }
-}
-
-// ------------------------------------------------------------
-// Placa de OD única: cada COLUMNA es un tiempo (t0 en la 1, t2 en la 2…) y cada FILA una réplica de una cepa.
-// Se convierte en curvas: una por fila, con la OD de cada columna que tenga tiempo asignado.
-// ------------------------------------------------------------
-export const disenoOdDef = () => ({ tiempos: Object.fromEntries([0, 2, 4, 6, 8, 10, 12].map((t, i) => [i + 1, t])), filas: {} })
-export const normalizarDisenoOd = (d) => ({ ...disenoOdDef(), ...(d || {}), tiempos: d?.tiempos || disenoOdDef().tiempos, filas: d?.filas || {} })
-
-export function placaADatos(lectura, d) {
-  if (!lectura || !lectura.datos?.length) return { datos: null, config: [] }
-  const cols = Object.entries(d.tiempos).filter(([, t]) => t !== '' && t !== null && finito(Number(t))).map(([c, t]) => [Number(c), Number(t)]).sort((a, b) => a[1] - b[1])
-  const filas = LETRAS.filter((L) => d.filas[L]?.muestra)
-  if (!cols.length || !filas.length) return { datos: null, config: [] }
-  const tiempos = [...new Set(cols.map(([, t]) => Math.round(t * 3600 * 1000) / 1000))]
-  const val = {}
-  lectura.datos.forEach((x) => { val[x.Pocillo] = x.OD })
-  const pocillos = {}, config = []
-  const cuenta = {}
-  filas.forEach((L) => {
-    const f = d.filas[L]
-    pocillos[L + '1'] = tiempos.map((ts) => {
-      const c = cols.find(([, t]) => Math.round(t * 3600 * 1000) / 1000 === ts)
-      const v = c ? val[L + c[0]] : NaN
-      return finito(v) ? v : NaN
-    })
-    cuenta[f.muestra] = (cuenta[f.muestra] || 0) + 1
-    config.push({ Pocillo: L + '1', Muestra: f.muestra, Replica: cuenta[f.muestra], EsBlanco: !!f.blanco, Fila: L })
-  })
-  return { datos: { tiempos, pocillos }, config }
-}

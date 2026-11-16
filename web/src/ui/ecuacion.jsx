@@ -7,7 +7,7 @@ import { useState } from 'react'
 import { finito } from '../calculo/comun/analisis.js'
 import { Campo, Modal, Num } from './base.jsx'
 import { excelMatriz } from '../datos/excel.js'
-import { descargarBlob, descargarTexto, fx, sciCorto } from '../comun/utils.js'
+import { descargarBlob, descargarTexto, fx, sci } from '../comun/utils.js'
 import { EcModelo } from './ecuacionBonita.jsx'
 import { MODELOS_UFC } from '../calculo/ufc/index.js'
 import { useOpcion } from './opciones.js'
@@ -51,18 +51,18 @@ function BloqueCepa({ f, tipo, vy, onTabla }) {
           <small>
             t en horas · μ = {c.modelo !== 'lineal' ? `${fx(c.mu, 4)}${finito(c.ee_mu) ? ` ± ${fx(c.ee_mu, 4)}` : ''} h⁻¹` : `${fx(c.mu / Math.LN10, 4)} log₁₀/h (= ${fx(c.mu, 4)} h⁻¹ en ln)`}
             {c.modelo !== 'lineal' ? ` · lag λ = ${c.modelo === 'baranyi' ? 'h₀/μ = ' : ''}${fx(c.lag_h, 2)}${finito(c.ee_lag) && c.ee_lag > 0 ? ` ± ${fx(c.ee_lag, 2)}` : ''} h${c.lagFijo ? ' (fijado)' : ''}` : ''}
-            {c.modelo !== 'lineal' ? ` · ${vy} máx = ${tipo === 'od' ? fx(10 ** c.yEnd, 3) : sciCorto(10 ** c.yEnd)}${c.ymaxFijo ? ' (fijado)' : c.mesetaExtrapolada ? ' (extrapolada)' : ''}` : ''}
+            {c.modelo !== 'lineal' ? ` · ${vy} máx = ${tipo === 'od' ? fx(10 ** c.yEnd, 3) : sci(10 ** c.yEnd)}${c.ymaxFijo ? ' (fijado)' : c.mesetaExtrapolada ? ' (extrapolada)' : ''}` : ''}
             {` · n − p = ${c.gl} · ajustado entre ${fx(c.t0, 1)} y ${fx(c.t1, 1)} h`}
           </small>
         </div>
-        {(c.avisos || []).map((a) => <div key={a} className="aviso-texto" style={{ fontSize: 12 }}>⚠ {a}</div>)}
-        {f.aviso && <div className="aviso-texto" style={{ fontSize: 12 }}>⚠ {f.aviso}</div>}
+        {(c.avisos || []).map((a) => <div key={a} className="aviso-texto" style={{ fontSize: 12.5 }}>⚠ {a}</div>)}
+        {f.aviso && <div className="aviso-texto" style={{ fontSize: 12.5 }}>⚠ {f.aviso}</div>}
         <div className="ec-calc">
           <div className="ec-conv">
             <div className="ec-conv-fila">
               <CampoCinta etiqueta={`Tiempo (h) → ${unidad}`}><Num value={t} onChange={setT} ancho={84} /></CampoCinta>
               <span className="ec-flecha">→</span>
-              <b className="ec-res">{finito(yT) ? (tipo === 'od' ? fx(10 ** yT, 3) : sciCorto(10 ** yT)) : '–'}</b>
+              <b className="ec-res">{finito(yT) ? (tipo === 'od' ? fx(10 ** yT, 3) : sci(10 ** yT)) : '–'}</b>
               {tipo === 'ufc' && finito(yT) && <span className="ayuda">log₁₀ {fx(yT, 2)}</span>}
               {finito(yT) && etq(Number(t))}
             </div>
@@ -72,7 +72,7 @@ function BloqueCepa({ f, tipo, vy, onTabla }) {
               <CampoCinta etiqueta={`${unidad} → tiempo (h)`}><Num value={v} onChange={setV} ancho={110} /></CampoCinta>
               <span className="ec-flecha">→</span>
               <b className="ec-res">{finito(tV) ? `${fx(tV, 2)} h` : '–'}</b>
-              {finito(tV) ? etq(tV) : Number(v) > 0 && <span className="chip aviso" data-tip="El modelo se frena en su máximo: no existe un tiempo para un valor mayor">fuera del alcance del modelo{c.modelo === 'baranyi' ? ` (máx. ${tipo === 'od' ? fx(10 ** c.yEnd, 3) : sciCorto(10 ** c.yEnd)})` : ''}</span>}
+              {finito(tV) ? etq(tV) : Number(v) > 0 && <span className="chip aviso" data-tip="El modelo se frena en su máximo: no existe un tiempo para un valor mayor">fuera del alcance del modelo{c.modelo === 'baranyi' ? ` (máx. ${tipo === 'od' ? fx(10 ** c.yEnd, 3) : sci(10 ** c.yEnd)})` : ''}</span>}
             </div>
           </div>
           <BotonCinta simbolo="▦" texto="Tabla de valores" onClick={onTabla} tip={'Tabla de valores del modelo\nTiempo y valor calculado en el rango y con el intervalo que elijas, para exportar (como «Fit» de DMFit)'} />
@@ -102,7 +102,7 @@ export function TablaValores({ titulo, nombreArchivo, xEtq, cols, f, medido, des
   const exportarExcel = async () => descargarBlob(await excelMatriz([{ nombre: 'Modelo', matriz: [[...col, 'Rango'], ...filas.map((r) => [...fila(r), rango(r)])] }]), nombreArchivo + '.xlsx')
   const num = (x) => String(x).replace('.', ',')
   const exportarCsv = () => descargarTexto([[...col, 'Rango'].join(';'), ...filas.map((r) => [...fila(r).map(num), rango(r)].join(';'))].join(String.fromCharCode(10)), nombreArchivo + '.csv', 'text/csv;charset=utf-8')
-  const celda = (x) => (finito(x) ? (Math.abs(x) >= 1e5 || (Math.abs(x) < 1e-3 && x !== 0) ? sciCorto(x) : fx(x, dec)) : '–')
+  const celda = (x) => (finito(x) ? (Math.abs(x) >= 1e5 || (Math.abs(x) < 1e-3 && x !== 0) ? sci(x) : fx(x, dec)) : '–')
   return (
     <Modal titulo={titulo} ancho={640} onClose={onClose}
       pie={<><button onClick={onClose}>Cerrar</button><button onClick={exportarCsv} disabled={!filas.length}>Exportar CSV</button><button className="primario" onClick={exportarExcel} disabled={!filas.length}>Exportar a Excel</button></>}>

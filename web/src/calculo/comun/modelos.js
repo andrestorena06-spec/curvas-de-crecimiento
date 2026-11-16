@@ -4,10 +4,6 @@
 // ============================================================
 import { finito } from './analisis.js'
 
-export const MODELOS = {
-  gompertz: 'Gompertz modificado', logistico: 'Logístico', richards: 'Richards', baranyi: 'Baranyi-Roberts',
-}
-
 // y = ln(OD) (o ln N) para Baranyi y Roberts (1994) con ν = μmax y curvatura m hacia la meseta:
 //   y = y0 + μA − (1/m)·ln[1 + (e^{mμA} − 1) / e^{m(ymax − y0)}]
 // m = 1 es la forma habitual. Mientras las exponenciales no desbordan se usa la fórmula directa (con m = 1 da

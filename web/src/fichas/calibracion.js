@@ -61,12 +61,14 @@ export function fichaConversion(cal, sentido, entrada, salida, o = {}) {
 }
 
 // ==== OD vs recuento: μ de las dos mediciones
-export function fichaComparacion(m, rs, c) {
-  const muOd = rs?.mu_max?.m, muU = c?.mu, q = muOd / muU
+// x: la fila de muOdPorCepa (μ por OD con el método elegido); c: el ajuste de los recuentos
+export function fichaComparacion(m, x, c) {
+  const muOd = x?.mu, muU = c?.mu, q = muOd / muU
   return { titulo: 'μ por OD / μ por recuento', sujeto: m, valor: finito(q) ? f2(q) : '–', metodos: 'comb',
     pasos: [
-      { titulo: 'μ por OD', texto: rs ? `${rs.unico ? 'Curva de la cepa (ventana deslizante)' : `Media de ${rs.mu_max.n} réplicas (ventana deslizante)`}: ${g(muOd)} h⁻¹.` : 'Sin datos de OD.' },
-      { titulo: 'μ por recuento', texto: c?.ok ? `${MODELOS_UFC[c.modelo]}: ${g(muU)} h⁻¹.` : (c?.motivo || 'Sin ajuste.') },
+      { titulo: 'μ por OD', texto: x ? `Método: ${x.etq}${x.metodo === 'ventana' ? (x.r?.unico ? ', curva de la cepa' : `, media de ${x.r?.mu_max.n} réplicas`) : ''}: ${g(muOd)} h⁻¹.${x.respaldo ? ` ${x.respaldo}.` : ''}` : 'Sin datos de OD.' },
+      { titulo: 'μ por recuento', texto: c?.ok ? `Método: ${MODELOS_UFC[c.modelo]}, ajustado a la media de cada tiempo: ${g(muU)} h⁻¹.` : (c?.motivo || 'Sin ajuste.') },
+      ...(x && c?.ok && x.metodo !== c.modelo ? [{ titulo: 'Métodos distintos', texto: `La μ por OD sale de «${x.etq}» y la de los recuentos de «${MODELOS_UFC[c.modelo]}». Para comparar con el mismo método, elegí el mismo modelo en «Modelo» de Curva OD y de Curva UFC.` }] : []),
       { titulo: 'Cociente', formula: ['cociente = μ OD / μ recuento'], cuenta: [`cociente = ${g(muOd)} / ${g(muU)} = ${f2(q)}`],
         nota: 'Si la OD siguiera exactamente a las células viables, el cociente sería ≈ 1. Un cociente distinto indica cambios en el tamaño de las células, agregación o pérdida de viabilidad. Es una comparación descriptiva (sin prueba estadística).' },
     ] }

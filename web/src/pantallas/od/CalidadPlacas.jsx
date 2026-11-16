@@ -1,23 +1,22 @@
 import { useMemo, useRef, useState } from 'react'
 import { useOpcion } from '../../ui/opciones.js'
 import { desvio, finito, media } from '../../calculo/comun/analisis.js'
-import { METODOS_ATIPICOS } from '../../calculo/comun/atipicos.js'
 import { TEMAS, rellenoPocillo, useTema } from '../../estilo/tema.js'
 import { Grafico, estiloGraficoDef, useAncho } from '../../ui/graficos/grafico.jsx'
 import { ModalGuardarImagen, useGraficoCtx } from '../../ui/graficos/guardarImagen.jsx'
 import { PanelPersonalizar } from '../../ui/graficos/personalizar.jsx'
-import { Icono, Modal, Num } from '../../ui/base.jsx'
-import { BotonCinta, Cajon, CampoCinta, Cinta, Grupo, Mosaico, OpcionesCinta } from '../../ui/cinta.jsx'
-import { LETRAS, fmtTick, fx, tCuantil, ticks } from '../../comun/utils.js'
+import { Icono, Modal } from '../../ui/base.jsx'
+import { BotonCinta, Cajon, Cinta, Grupo, Mosaico } from '../../ui/cinta.jsx'
+import { LETRAS, fmtTick, fx, ticks } from '../../comun/utils.js'
 import { Valor } from '../../fichas/FichaCalculo.jsx'
 import { GrupoModeloOd } from './ModeloOd.jsx'
 import { GrupoOutliers } from '../../ui/outliers.jsx'
 import { GrupoMostrar, GrupoTipoError, conEtiquetas, textoMostrar, useMostrar } from '../../ui/mostrar.jsx'
 import { fichaBlancoPlaca } from '../../fichas/index.js'
 import { errorElegido, resumenReplicas } from '../../calculo/comun/estadistica.js'
-import { tramoOdRige, zonasVentana } from './FasesCepa.jsx'
+import { zonasVentana } from './FasesCepa.jsx'
+import { tramoOdRige } from '../../calculo/od/parametros.js'
 
-const ERRORES = [['sd', 'Desviación estándar'], ['sem', 'Error estándar (EEM)'], ['ic95', 'IC 95 %']]
 const errorDe = (v, tipo) => errorElegido(resumenReplicas(v), tipo).e
 const valorDe = (l) => (l.EsBlanco ? l.OD_leida : l.OD_corregida)
 
@@ -232,7 +231,7 @@ function PlacaDeTiempo({ s, lect, pl }) {
               <td key={p}>
                 <div className={`pozo ${!lay?.muestra ? 'vacio-poz' : ''} ${lay?.blanco ? 'blanco' : ''}`} onClick={l ? () => s.alternarLectura(l.clave) : undefined}
                   data-tip={l ? `${p} · ${l.Muestra}\n${l.EsBlanco ? 'OD leída' : 'OD corregida'} = ${fx(valorDe(l), 4)}\n${l.Motivo || 'Aceptado'}\nClic: ${l.Usado ? 'excluir' : 'reincorporar'}` : undefined}
-                  style={{ width: 54, height: 44, fontSize: 10.5, background: col ? rellenoPocillo(col, T) : undefined, borderColor: borde || undefined, borderWidth: l && (!l.Usado || l.Sospechoso) ? 2 : 1, cursor: l ? 'pointer' : 'default' }}>
+                  style={{ width: 54, height: 44, fontSize: 11, background: col ? rellenoPocillo(col, T) : undefined, borderColor: borde || undefined, borderWidth: l && (!l.Usado || l.Sospechoso) ? 2 : 1, cursor: l ? 'pointer' : 'default' }}>
                   {l ? <><b style={{ color: l.Usado ? T.texto : T.peligro, textDecoration: l.Usado ? 'none' : 'line-through' }}>{fx(valorDe(l), 3)}</b><small>{l.EsBlanco ? 'blanco' : p}</small></> : <small>{p}</small>}
                 </div>
               </td>
@@ -256,7 +255,7 @@ function ResumenTiempos({ lect }) {
   }, [lect])
   return (
     <div className="tabla-scroll alta"><table className="tabla">
-      <thead><tr><th className="num">T (h)</th><th>Grupo</th><th className="num">Pocillos usados</th><th className="num">Media</th><th className="num">DE</th><th className="num">CV %</th><th>Excluidos</th><th>Sospechosos conservados</th></tr></thead>
+      <thead><tr><th className="num">t (h)</th><th>Grupo</th><th className="num">Pocillos usados</th><th className="num">Media</th><th className="num">DE</th><th className="num">CV %</th><th>Excluidos</th><th>Sospechosos conservados</th></tr></thead>
       <tbody>{filas.map((f) => (
         <tr key={f.Muestra + f.T}><td className="num">{f.T}</td><td>{f.Muestra === 'Blanco' ? <i>Blanco</i> : f.Muestra}</td><td className="num">{f.n} / {f.N}</td><td className="num">{fx(f.m, 4)}</td><td className="num">{fx(f.sd, 4)}</td>
           <td className="num" style={{ color: f.cv > 20 ? 'var(--aviso)' : undefined }}>{fx(f.cv, 1)}</td><td>{f.fuera.join(', ')}</td><td>{f.sosp.join(', ')}</td></tr>
@@ -354,6 +353,3 @@ export function VistaCalidadPlacas({ s }) {
   )
 }
 
-// lecturas para otras vistas (Datos, compatibilidad)
-export const lecturasPlacas = (s) => s.serie.extra?.lecturas || []
-export const fueraLect = (l) => !l.Usado

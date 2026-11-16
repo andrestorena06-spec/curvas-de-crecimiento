@@ -1,5 +1,6 @@
 import { useMemo, useRef } from 'react'
 import { useOpcion } from '../../ui/opciones.js'
+import { finito } from '../../calculo/comun/analisis.js'
 import { tablasDe } from './Datos.jsx'
 import { mathATexto, O, N, R, T, abs, barra, cor, de_t, ec, en, ex, fr, ln, log10, par, prod, raiz, sep, sub, suma, sup, tilde, v } from '../../ui/mat.jsx'
 import { opAnalisis } from '../../calculo/od/pipeline.js'
@@ -36,9 +37,12 @@ function textoPublicacion(s) {
     const entreRep = exp.origenOd === 'placas' || aj.dixon_on
     const autoAtip = exp.origenOd === 'placas' ? aj.pl_auto === true : aj.od_atip_auto === true
     if (out.length) p.push(`Los valores aberrantes se identificaron con ${out.join(' y ')}${entreRep ? (autoAtip ? '; los sospechosos entre réplicas se excluyeron automáticamente' : '; los sospechosos entre réplicas solo se marcaron y la decisión de excluirlos fue manual') : ''}.`)
-    p.push(`La velocidad específica máxima de crecimiento (μmax) se estimó como la mayor pendiente de ln(OD) contra el tiempo en ventanas deslizantes de ${op.ancho} h (mínimo ${op.minpts} puntos, R² ≥ ${op.r2min}, OD ≥ ${op.lnmin}); el tiempo de duplicación como ln 2/μmax, y la fase de latencia como ${op.lag_metodo === 'umbral' ? `el tiempo en que la OD supera ${op.lag_factor} veces la OD₀` : 'la intersección de la tangente en μmax con ln(OD₀)'}${op.od0_metodo === 'auto' ? ', con OD₀ estimada mediante un modelo de tres fases (Buchanan et al., 1997)' : ''}. La OD máxima (K) se tomó sobre la curva suavizada con mediana móvil de 3 puntos y el área bajo la curva se calculó por la regla del trapecio.`)
+    p.push(`La velocidad específica máxima de crecimiento (μmax) se estimó como la pendiente de ln(OD) contra el tiempo en la ventana deslizante de mayor pendiente (ventanas de ${op.ancho} h, mínimo ${op.minpts} puntos, R² ≥ ${op.r2min}, OD ≥ ${op.lnmin})${finito(op.quota) ? `, ampliada con las ventanas contiguas cuya pendiente fue ≥ ${Math.round(op.quota * 100)} % de la máxima y reajustada` : ''}; el tiempo de duplicación como ln 2/μmax, y la fase de latencia como ${op.lag_metodo === 'umbral' ? `el tiempo en que la OD supera ${op.lag_factor} veces la OD₀` : 'la intersección de la tangente en μmax con ln(OD₀)'}${op.od0_metodo === 'auto' ? ', con OD₀ estimada mediante un modelo de tres fases (Buchanan et al., 1997)' : ''}. La OD máxima (K) se tomó sobre la curva suavizada con mediana móvil de 3 puntos y el área bajo la curva se calculó por la regla del trapecio.`)
     const mOd = exp.opciones?.['curva.modelo'] || 'baranyi'
-    if (mOd === 'baranyi' || mOd === 'huang') p.push(`Además se ajustó el modelo ${mOd === 'huang' ? 'de Huang' : `de Baranyi y Roberts (m = ${exp.opciones?.['curva.mcurv'] ?? 1})`} por mínimos cuadrados a ln(OD) de las lecturas con OD ≥ ${op.lnmin}, ${exp.opciones?.['curva.ajusteRep'] ? 'una curva por réplica' : 'una curva por cepa con todas sus réplicas'}.`)
+    if (mOd === 'baranyi' || mOd === 'huang') p.push(`Además se ajustó el modelo ${mOd === 'huang' ? 'de Huang' : `de Baranyi y Roberts (m = ${exp.opciones?.['curva.mcurv'] ?? 1})`} por mínimos cuadrados a ln(OD), ${exp.opciones?.['curva.ajusteRep'] && exp.origenOd !== 'placas' ? `una curva por réplica con sus lecturas de OD ≥ ${op.lnmin}` : `una curva por cepa con la media de las réplicas en cada tiempo (medias con OD ≥ ${op.lnmin})`}.`)
+    p.push(mOd === 'baranyi' || mOd === 'huang'
+      ? `La velocidad específica (μ), el tiempo de duplicación y la fase de latencia que se informan por cepa son los del modelo ${mOd === 'huang' ? 'de Huang' : 'de Baranyi y Roberts'}; los de la ventana de ln(OD) se usan solo si el modelo no ajusta.`
+      : 'La velocidad específica (μ), el tiempo de duplicación y la fase de latencia que se informan por cepa son los de la ventana de ln(OD).')
     if (op.spline) p.push('Como control, μmax se comparó con el máximo de la derivada de un spline cúbico de suavizado ajustado a ln(OD).')
     const graf = [aj.suavizado && aj.suavizado !== 'ninguno' && 'el suavizado', aj.normalizar && aj.normalizar !== 'ninguna' && 'la normalización por la OD inicial'].filter(Boolean)
     if (exp.origenOd !== 'placas' && graf.length) { const t = graf.join(' y '); p.push(`${t[0].toUpperCase()}${t.slice(1)} se usaron solo para los gráficos; todos los parámetros se calcularon con la OD corregida, sin suavizar ni normalizar.`) }
@@ -231,7 +235,7 @@ export function Metodos({ s }) {
         )}
 
         <Paso id="modelos" datos={['od_modelo', 'ufc_crec']} activo={<>{od && <Act on={modOd === 'baranyi' || modOd === 'huang'} et={`OD: ${nomMod[modOd]}`} txt={`OD: ${nomMod[modOd]}${o['curva.ajusteRep'] ? ', por réplica' : ', por cepa'}${o['curva.lagfijo'] !== '' && o['curva.lagfijo'] !== undefined ? `, λ = ${dc(o['curva.lagfijo'])} h` : ''}${Number(o['curva.nmax']) > 0 ? `, OD máx = ${dc(o['curva.nmax'])}` : ''}${modOd === 'baranyi' ? `, m = ${dc(o['curva.mcurv'] ?? 1)}` : ''}`} />}{ufc && <Act on={modU !== 'lineal'} et={`UFC: ${nomMod[modU]}`} txt={`UFC: ${nomMod[modU]}${modU === 'baranyi' ? `, m = ${dc(aj.ufc_mcurv ?? 1)}` : ''}`} />}<Act on txt={`fases: μ ≥ ${Math.round(fraccionExp(aj) * 100)} % de μmáx`} /></>}>
-          <p className="met-nota">Ajuste no lineal por mínimos cuadrados (Levenberg–Marquardt, varios puntos de partida) sobre y = ln OD (OD &gt; 0) o y = ln N, con todos los tiempos.</p>
+          <p className="met-nota">Ajuste no lineal por mínimos cuadrados (Levenberg–Marquardt, varios puntos de partida) sobre y = ln OD o y = ln N. Por cepa: la media de las réplicas en cada tiempo (en OD, medias ≥ {dc(op.lnmin)}); por réplica (solo OD): sus lecturas. Con todos los tiempos.</p>
           {ec(T('Baranyi'), O(':'), y(), de_t(), O('='), sub(y(), N('0')), O('+'), v('μ'), v('A'), de_t(), O('−'), fr(N('1'), v('m')), ln(), cor(N('1'), O('+'), fr(R(ex(v('m'), v('μ'), v('A'), de_t()), O('−'), N('1')), ex(v('m'), par(sub(y(), T('máx')), O('−'), sub(y(), N('0')))))))}
           {ec(v('A'), de_t(), O('='), v('t'), O('+'), fr(N('1'), v('μ')), ln(), par(ex(O('−'), v('μ'), v('t')), O('+'), ex(O('−'), sub(v('h'), N('0'))), O('−'), ex(O('−'), v('μ'), v('t'), O('−'), sub(v('h'), N('0')))), sep(), v('λ'), O('='), fr(sub(v('h'), N('0')), v('μ')))}
           {ec(T('Huang'), O(':'), y(), de_t(), O('='), sub(y(), N('0')), O('+'), sub(y(), T('máx')), O('−'), ln(), cor(ex(sub(y(), N('0'))), O('+'), par(ex(sub(y(), T('máx'))), O('−'), ex(sub(y(), N('0')))), ex(O('−'), v('μ'), v('B'), de_t())))}
@@ -265,14 +269,14 @@ export function Metodos({ s }) {
           <Paso id="calib" datos={['pares', 'calibracion']} activo={<Act on txt={o['combinado.soloExp'] !== false ? 'pares de la fase exponencial común a OD y UFC' : 'todos los pares'} />}>
             {ec(log10(), v('N'), O('='), v('m'), O('·'), T('OD'), O('+'), v('b'), sep(), v('m'), O('='), fr(sub(v('S'), R(v('x'), v('y'))), sub(v('S'), R(v('x'), v('x')))), sep(), v('b'), O('='), barra('y'), O('−'), v('m'), xb(), sep(), v('σ'), O('='), raiz(fr(T('SCE'), R(v('n'), O('−'), N('2')))))}
             {ec(T('IP 95 %'), O(':'), log10(), sub(v('N'), N('0')), O('±'), sub(v('t'), R(N('0,975'), O(';'), v('n'), O('−'), N('2'))), v('σ'), raiz(N('1'), O('+'), fr(N('1'), v('n')), O('+'), fr(sup(par(sub(v('x'), N('0')), O('−'), xb()), N('2')), sub(v('S'), R(v('x'), v('x'))))), sep(), T('OD'), O('='), fr(R(log10(), v('N'), O('−'), v('b')), v('m')))}
-            <Simbolos items={[[en(v('x'), O(','), v('y')), 'OD media de la cepa y log₁₀ UFC/mL en el mismo tiempo (OD interpolada linealmente si no hubo lectura)'], [en(v('σ')), 'error típico en log₁₀']]} />
+            <Simbolos items={[[en(v('x'), O(','), v('y')), 'OD media de la cepa y log₁₀ UFC/mL en el mismo tiempo (OD interpolada linealmente si no hubo lectura)'], [en(v('σ')), 'error típico en log₁₀'], [en(v('n')), 'pares: mínimo 2 para la recta; el error y el intervalo de predicción necesitan 3 (se recomiendan 5 o más)']]} />
           </Paso>
         )}
 
         {comb && (
-          <Paso id="comparacion" datos={['comparacion']}>
+          <Paso id="comparacion" datos={['comparacion']} activo={<Act on txt={`OD: ${modOd === 'baranyi' || modOd === 'huang' ? nomMod[modOd] : 'ventana de ln(OD)'} · UFC: ${nomMod[modU]}`} />}>
             {ec(T('cociente'), O('='), fr(sub(v('μ'), T('OD')), sub(v('μ'), T('UFC'))))}
-            <Simbolos items={[[en(sub(v('μ'), T('OD'))), 'media de μmáx de las réplicas (paso μmax)'], [en(sub(v('μ'), T('UFC'))), 'μ del modelo de los recuentos; cociente descriptivo, sin prueba estadística']]} />
+            <Simbolos items={[[en(sub(v('μ'), T('OD'))), modOd === 'baranyi' || modOd === 'huang' ? `μ del modelo ${nomMod[modOd]} de la OD (paso de modelos); la de la ventana solo si el modelo no ajusta` : 'μmáx de la ventana de ln OD (paso μmax)'], [en(sub(v('μ'), T('UFC'))), `μ de ${nomMod[modU]} sobre los recuentos; cociente descriptivo, sin prueba estadística. Es la misma μ del Resumen, de OD ↔ UFC y de Datos`]]} />
           </Paso>
         )}
 

@@ -8,10 +8,7 @@ import { fs } from '../comun/utils.js'
 
 const num = (x, d = 4) => fs(x, d)
 const Mn = ({ x, d }) => <mn>{(typeof x === 'string' ? x : num(x, d)).replace(/^-/, '−')}</mn>
-const Mi = ({ children, normal }) => <mi mathvariant={normal ? 'normal' : undefined}>{children}</mi>
-const Mo = ({ children, grande }) => <mo {...(grande ? { stretchy: 'true' } : {})}>{children}</mo>
 export const Log10 = () => <><msub><mi mathvariant="normal">log</mi><mn>10</mn></msub><mspace width="0.17em" /></>
-const Pot10 = ({ children }) => <msup><mn>10</mn><mrow>{children}</mrow></msup>
 const Frac = ({ a, b }) => <mfrac><mrow>{a}</mrow><mrow>{b}</mrow></mfrac>
 const Par = ({ children, tipo = '(' }) => { const c = { '(': ')', '[': ']' }[tipo]; return <mrow><mo stretchy="true">{tipo}</mo>{children}<mo stretchy="true">{c}</mo></mrow> }
 // «+ x» o «− x» según el signo
@@ -28,7 +25,6 @@ export function Ec({ children, bloque = true }) {
 }
 
 // y(t) del crecimiento: log₁₀ N(t) (UFC) o log₁₀ OD(t)
-const Y = ({ vy }) => <><Log10 /><mi mathvariant={vy === 'OD' ? 'normal' : undefined}>{vy}</mi><mo stretchy="false">(</mo><mi>t</mi><mo stretchy="false">)</mo></>
 
 // Modelo del ajuste. «Linealizar log₁₀»: log₁₀ y = a + b·t. Baranyi y Roberts: en ln, que es en lo que se calcula
 // (y = ln N o ln OD; μ en h⁻¹; c.y0 y c.yEnd vienen en log₁₀ y se pasan a ln).
@@ -83,10 +79,3 @@ export function EcCalibracion({ c }) {
   return <Ec><mtext>{c.ecuacion}</mtext></Ec>
 }
 
-// Recta de la fase exponencial de una curva de OD: log₁₀ OD = a + b·t, y la misma sin logaritmo: OD = A · 10^(b·t)
-export function EcRectaOd({ intercepto10, pendiente10 }) {
-  return <Ec><Log10 /><mi mathvariant="normal">OD</mi><mo stretchy="false">(</mo><mi>t</mi><mo stretchy="false">)</mo><mo>=</mo><Mn x={intercepto10} /><Sg x={pendiente10} /><mo>·</mo><mi>t</mi></Ec>
-}
-export function EcRectaOdExp({ intercepto10, pendiente10 }) {
-  return <Ec><mi mathvariant="normal">OD</mi><mo stretchy="false">(</mo><mi>t</mi><mo stretchy="false">)</mo><mo>=</mo><Sci x={10 ** intercepto10} /><mo>·</mo><Pot10><Mn x={pendiente10} /><mo>·</mo><mi>t</mi></Pot10></Ec>
-}

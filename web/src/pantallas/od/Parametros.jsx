@@ -5,78 +5,25 @@
 //   · SeccionComparacion va en «OD ↔ UFC»
 // Cada número abre con un clic su ficha «Cómo se calculó».
 // ============================================================
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useOpcion } from '../../ui/opciones.js'
-import { AYUDA, MODELOS_ETQ, PARAMS } from '../../app/ayuda.js'
+import { AYUDA, PARAMS } from '../../app/ayuda.js'
 import { desvio, finito, media } from '../../calculo/comun/analisis.js'
-import { resumenReplicas } from '../../calculo/comun/estadistica.js'
-import { ajustarModelo } from '../../calculo/comun/modelos.js'
 import { nombreReplica, opAnalisis } from '../../calculo/od/pipeline.js'
-import { MODELOS_UFC, NOMBRE_VARIANTE, ajusteDmfit, puntosUfc } from '../../calculo/ufc/index.js'
+import { MODELOS_UFC, NOMBRE_VARIANTE, puntosUfc, modeloUfc } from '../../calculo/ufc/index.js'
 import { EcuacionModelo } from '../../ui/ecuacion.jsx'
-import { EcRectaOd, EcRectaOdExp } from '../../ui/ecuacionBonita.jsx'
-import { useTema } from '../../estilo/tema.js'
-import { Campo, Check, Num, Seg, Sel } from '../../ui/base.jsx'
+import { Campo, Check, Num, Seg } from '../../ui/base.jsx'
 import { replicaOd } from '../../datos/experimento.js'
-import { Grafico } from '../../ui/graficos/grafico.jsx'
 import { Valor } from '../../fichas/FichaCalculo.jsx'
 import { fichaComparacion, fichaModeloOd, fichaModeloUfc, fichaParamOd, fichaResumen } from '../../fichas/index.js'
-import { fs, fx, tCuantil } from '../../comun/utils.js'
-import { crecimientoPorCepa } from '../ufc/ParamUfc.jsx'
+import { conError, fs, fx } from '../../comun/utils.js'
+import { CLAVES_RESUMEN, resumenPorCepa, celdaResumen, textoMetodoOd } from '../../calculo/od/parametros.js'
+import { comparacionMu } from '../../calculo/calibracion/pares.js'
 
-export const CLAVES_RESUMEN = ['mu_max', 'td_h', 'lag_h', 'K', 'delta_od', 'generaciones', 'auc_od', 't_umbral_od_h', 'od0', 'r2']
 // tabla de todas las curvas: las columnas principales y, con «Más columnas», el resto
 const CLAVES_PRINCIPALES = ['od0', 'mu_max', 'td_h', 'lag_h', 'K', 'generaciones', 'auc_od', 'r2']
 const CLAVES_TABLA = ['od0', 'mu_max', 'td_h', 'lag_h', 'K', 't_K_h', 'delta_od', 'generaciones', 'auc_od', 'auc_ln', 't_umbral_od_h', 'dod_max', 't_max_dod_h', 'mu_spline', 't_estacionaria', 't_muerte', 'caida_pct', 'r2']
 export const tipDe = (k) => (AYUDA[k] ? `${PARAMS[k]}\n${AYUDA[k].sig}\n\n${AYUDA[k].interp}` : PARAMS[k])
-
-// Resumen por cepa: media, DE e IC 95 % entre réplicas.
-//   · Varias filas por cepa (una por pocillo/serie): n = número de réplicas (pocillos o series, ver replicaOd) de UN experimento;
-//     el «±» es la DE entre ellas.
-//   · Una sola fila por cepa (placas por tiempo: una curva por cepa): n = pocillos por tiempo y el único error
-//     disponible es el EE de la pendiente de μmax (se_mu), que NO es variabilidad entre réplicas.
-//   · r[k].n = valores finitos que entraron en la media de ese parámetro (puede ser menor que n si alguna réplica no lo dio).
-//   · td = ln 2 / μ̄ (con la μ media), no el promedio de los td; su DE e IC se propagan de los de μ (primer orden).
-//   · R² no se promedia ni lleva DE (es la calidad de cada ajuste, no una magnitud): se informa el más bajo (el peor ajuste).
-export function resumenPorCepa(res, claves = CLAVES_RESUMEN) {
-  const muestras = [...new Set(res.map((r) => r.Muestra))]
-  return muestras.map((m) => {
-    const g = res.filter((r) => r.Muestra === m)
-    const unico = g.length === 1
-    const placas = unico && g[0].n_pocillos
-    // placas por tiempo: n = pocillos de la cepa en cada tiempo (la curva junta los de todos los tiempos)
-    const nTxt = placas ? (g[0].n_por_tiempo_min && g[0].n_por_tiempo_min !== g[0].n_por_tiempo_max ? `${g[0].n_por_tiempo_min}–${g[0].n_por_tiempo_max}` : String(g[0].n_por_tiempo_max || g[0].n_pocillos)) : String(g.length)
-    const out = { Muestra: m, n: placas ? g[0].n_por_tiempo_max || g[0].n_pocillos : g.length, nTxt, n_lecturas: placas ? g[0].n_lecturas : NaN, n_curvas: g.length, unico,
-      unidad: placas ? 'pocillos por tiempo' : 'réplicas', se_mu: unico ? g[0].mu_se : NaN }
-    claves.forEach((k) => {
-      const v = g.map((r) => r[k]).filter(finito)
-      const n = v.length
-      if (k === 'r2') { out[k] = { m: n ? Math.min(...v) : NaN, sd: NaN, n, ic: NaN, minimo: true }; return }
-      const est = resumenReplicas(v)
-      out[k] = { m: est.m, sd: est.sd, n, ic: est.ic }
-    })
-    if (claves.includes('td_h')) {
-      const v = g.map((r) => r.mu_max).filter(finito)
-      const est = resumenReplicas(v), n = est.n, mu = est.m, sd = est.sd
-      if (n && mu > 0) {
-        const td = Math.LN2 / mu, f = td / mu     // d td / d μ = −td / μ (en valor absoluto)
-        out.td_h = { m: td, sd: finito(sd) ? f * sd : NaN, n, ic: finito(est.ic) ? f * est.ic : NaN, deMu: true }
-      } else out.td_h = { m: NaN, sd: NaN, n: 0, ic: NaN, deMu: true }
-    }
-    return out
-  })
-}
-
-// Texto del «±» de una celda del resumen.
-//   tipo: 'DE' (entre réplicas), 'EE' (error estándar de la pendiente de μmax, una sola curva por cepa) o null
-export function celdaResumen(r, k) {
-  const c = r[k]
-  // una curva por cepa: EE de la pendiente para μmax y, por el método delta, para td = ln 2 / μ (EE(td) = td · EE(μ) / μ)
-  const ee = r.unico && (k === 'mu_max' || k === 'td_h') && finito(r.se_mu)
-  const tipo = finito(c.sd) ? 'DE' : ee ? 'EE' : null
-  const err = tipo === 'DE' ? c.sd : tipo === 'EE' ? (k === 'td_h' ? (c.m * r.se_mu) / r.mu_max.m : r.se_mu) : NaN
-  return { tipo, err, pocoN: !r.unico && c.n > 1 && c.n < 3 }
-}
 
 // ficha de una celda del resumen por cepa: con una sola curva por cepa, la del parámetro de esa curva; si no, media ± DE
 const etiquetaRep = (s) => (x) => `${nombreReplica(x.Muestra, x.Replica)}${s.exp.origenOd === 'tecan' ? ` (${x.Pocillo})` : ''}`
@@ -103,7 +50,7 @@ export function CeldaResumen({ r, k, s }) {
   const c = celdaResumen(r, k)
   return (
     <td className="num">
-      <Valor f={s ? fichaCeldaResumen(s, r, k) : null}>{fs(r[k].m, 4)}{c.tipo ? <small className="ayuda"> ± {fs(c.err, 2)}{c.tipo === 'EE' ? ' (EE)' : ''}</small> : null}</Valor>
+      <Valor f={s ? fichaCeldaResumen(s, r, k) : null}>{conError(r[k].m, c.tipo ? c.err : NaN).v}{c.tipo ? <small className="ayuda"> ± {conError(r[k].m, c.err).e}{c.tipo === 'EE' ? ' (EE)' : ''}</small> : null}</Valor>
       {!r.unico && r[k].n < r.n_curvas && r[k].n > 0 ? <small className="ayuda"> [n={r[k].n}]</small> : null}
       {c.pocoN ? <small style={{ color: 'var(--aviso)' }} data-tip="n < 3: DE e IC 95 % poco confiables"> ⚠</small> : null}
     </td>
@@ -117,69 +64,6 @@ export const textoErrorResumen = (porCepa, origen) => porCepa
 export const avisoNBajo = (resumen) => {
   const poco = resumen.filter((r) => !r.unico && r.n_curvas < 3).map((r) => `${r.Muestra} (n = ${r.n_curvas})`)
   return poco.length ? `Con n < 3 la DE tiene muy poca base y no se calculan EEM ni IC 95 %: ${poco.join(', ')}.` : null
-}
-
-// ---------- modelo ajustado a la OD de cada cepa (Linealizar log₁₀ o Baranyi y Roberts) ----------
-// Usa TODOS los puntos de la cepa (cada lectura, no la media), con la OD del análisis (corregida, sin suavizar ni
-// normalizar) y ln(OD). Con «Promediada» en placas por tiempo, la media de cada tiempo. Devuelve [{ id, nombre, color, c, cc }]:
-// c = el ajuste (se dibuja), cc = lo que muestra la ecuación (sin ecuación si Baranyi y Roberts no llega a la meseta).
-const cacheAjustesOd = new WeakMap()
-// parámetros fijos del modelo de la OD (menú «Modelo» de Curva OD): curvatura m y OD máx (en OD; al ajuste va en log₁₀)
-export const parFijosOd = (s) => {
-  const o = s.exp.opciones || {}
-  const m = Number(o['curva.mcurv']), n = Number(o['curva.nmax'])
-  return { mcurv: m > 0 ? m : 1, nmax: n > 0 ? n : NaN, nmax10: n > 0 ? Math.log10(n) : NaN }
-}
-export function ajustesOd(s, modelo, muestras, lagFijo = '', porReplica = false) {
-  if (!modelo || modelo === 'no' || !s.pre?.analisis) return []
-  // el ajuste (Baranyi y Roberts sobre todos los puntos) es costoso: se calcula UNA vez por análisis, modelo y CEPA,
-  // y lo reusan todas las pantallas (la curva con todas las cepas, las fases de una cepa, la calibración, Datos)
-  const fijos = parFijosOd(s)
-  const base = [modelo, lagFijo, fijos.mcurv, fijos.nmax10, s.modoCurva].join('#')
-  let porRes = cacheAjustesOd.get(s.res || s.pre)
-  if (!porRes) { porRes = new Map(); cacheAjustesOd.set(s.res || s.pre, porRes) }
-  // por réplica (cinéticas y cubeta; en placas por tiempo cada tiempo es otro pocillo y no hay curvas por réplica):
-  // una ecuación y sus parámetros por réplica
-  if (porReplica && !s.porCepa) {
-    const ws = s.pre.analisis.filter((w) => !w.EsBlanco)
-    return muestras.flatMap((m) => ws.filter((w) => w.Muestra === m).sort((a, b) => a.Replica - b.Replica).map((w) => {
-      const clave = base + '#r#' + w.Pocillo
-      if (!porRes.has(clave)) porRes.set(clave, ajusteDeSeries(s, modelo, [w], lagFijo, fijos))
-      const est = s.estilos?.[w.Pocillo] || {}
-      const nombre = nombreReplica(m, w.Replica) + (s.exp.origenOd === 'tecan' ? ` (${w.Pocillo})` : '')
-      return { ...porRes.get(clave), id: w.Pocillo, cepa: m, nombre, color: est.color || s.colores[m], dash: est.dash }
-    }))
-  }
-  return muestras.map((m) => {
-    const clave = base + '#' + m
-    if (!porRes.has(clave)) porRes.set(clave, calcularAjustesOd(s, modelo, [m], lagFijo, fijos)[0])
-    const a = porRes.get(clave)
-    return { ...a, cepa: m, color: s.colores[m] }   // el color puede cambiar sin recalcular
-  })
-}
-function calcularAjustesOd(s, modelo, muestras, lagFijo, fijos = parFijosOd(s)) {
-  const ws = s.pre.analisis.filter((w) => !w.EsBlanco)
-  return muestras.map((m) => ({ id: m, nombre: m, color: s.colores[m], ...ajusteDeSeries(s, modelo, ws.filter((w) => w.Muestra === m), lagFijo, fijos) }))
-}
-// Ajuste del modelo a las lecturas de las series g (en ln OD). Entran las OD ≥ «OD mínima para ln» (an_lnmin, 0,01 por defecto),
-// el mismo criterio que la ventana de μmax: cerca del blanco el logaritmo amplifica el ruido (decisión del usuario 2026-11-13).
-function ajusteDeSeries(s, modelo, g, lagFijo, fijos) {
-  const op = opAnalisis(s.serie.aj)
-  {
-    let t = [], ly = []
-    const excl = new Set()
-    if (s.porCepa && s.modoCurva === 'media') {
-      const por = new Map()
-      g.forEach((w) => w.t.forEach((tt, i) => { if (finito(w.y[i])) { if (!por.has(tt)) por.set(tt, []); por.get(tt).push(w.y[i]) } }))
-      por.forEach((v, tt) => { const mm = media(v); if (mm > 0 && mm >= op.lnmin) { t.push(tt / 3600); ly.push(Math.log(mm)) } else excl.add(tt / 3600) })
-    } else g.forEach((w) => w.t.forEach((tt, i) => { const y = w.y[i]; if (finito(y) && y > 0 && y >= op.lnmin) { t.push(tt / 3600); ly.push(Math.log(y)) } else if (finito(y)) excl.add(tt / 3600) }))
-    const c = ajusteDmfit(t, ly, modelo, fijos.nmax10, fijos.mcurv, { ancho: op.ancho, minpts: op.minpts, r2min: op.r2min, quota: op.quota, lagFijo: lagFijo === '' ? NaN : Number(lagFijo) })
-    if (c.tDatos0 === undefined) { c.tDatos0 = c.t0; c.tDatos1 = c.t1 }
-    const cc = c
-    const ex = [...excl].sort((x, y) => x - y)
-    const aviso = ex.length ? `Excluidos del ajuste (OD < ${fs(op.lnmin, 3)}): t = ${ex.map((x) => fx(x, 2)).join(', ')} h.` : ''
-    return { c, cc, aviso, pts: { t, ly } }
-  }
 }
 
 // ---------- cómo se calcula la ecuación de OD vs t (con los ajustes editables) ----------
@@ -213,7 +97,7 @@ function ComoSeCalcula({ s }) {
 
 // Parámetros por cepa cuando el modelo es Baranyi y Roberts: salen del ajuste de ese modelo
 // valor ± error estándar (en chico); OD₀ y OD máx: EE(OD) = OD · ln 10 · EE(log₁₀ OD) (método delta)
-const pmOd = (txt, ee) => <>{txt}{finito(ee) && ee > 0 && <small className="ayuda"> ± {fs(ee, 2)}</small>}</>
+const ve = (v, e, cifras) => { const q = conError(v, e, 2, cifras); return <>{q.v}{q.e && <small className="ayuda"> ± {q.e}</small>}</> }
 function TablaBaranyiOd({ s, ajustes }) {
   const filas = ajustes.filter((a) => a.c)
   const porRep = filas.some((a) => a.id !== a.cepa)
@@ -223,18 +107,18 @@ function TablaBaranyiOd({ s, ajustes }) {
     const ms = (f) => { const v = ok.map(f).filter(finito); return { m: v.length ? media(v) : NaN, de: v.length > 1 ? desvio(v) : NaN, n: v.length } }
     return { n: ok.length, mu: ms((a) => a.c.mu), lag: ms((a) => a.c.lag_h), od0: ms((a) => 10 ** a.c.y0), odmax: ms((a) => (a.c.sinAsintota ? NaN : 10 ** a.c.yEnd)) }
   }
-  const mde = (q, d) => (finito(q.m) ? <>{fs(q.m, d)}{finito(q.de) && <small className="ayuda"> ± {fs(q.de, 2)}</small>}</> : '–')
+  const mde = (q, d) => (finito(q.m) ? ve(q.m, q.de, d) : '–')
   // cada número abre su ficha «Cómo se calculó» (el mismo modelo que para las UFC, con la OD)
   const V = (a, foco, txt) => <Valor f={() => fichaModeloOd(a.c, a.pts, { foco, nombre: a.nombre, color: a.color })}>{txt}</Valor>
   return (
     <div className="tarjeta">
-      <h2>{porRep ? 'Parámetros por réplica' : 'Parámetros por cepa'} <span className="ayuda" style={{ fontWeight: 400 }}>· {MODELOS_UFC[ajustes[0]?.c?.modelo] || 'Baranyi y Roberts'} sobre ln(OD), con {s.porCepa && s.modoCurva === 'media' ? 'la media de cada tiempo' : porRep ? 'las lecturas de cada réplica' : 'todos los puntos'}</span></h2>
+      <h2>{porRep ? 'Parámetros por réplica' : 'Parámetros por cepa'} <span className="ayuda" style={{ fontWeight: 400 }}>· {MODELOS_UFC[ajustes[0]?.c?.modelo] || 'Baranyi y Roberts'} sobre ln(OD), con {!porRep ? 'la media de las réplicas en cada tiempo' : porRep ? 'las lecturas de cada réplica' : 'todos los puntos'}</span></h2>
       <div className="tabla-scroll"><table className="tabla">
         <thead><tr><th>Cepa</th><th className="num">μ (h⁻¹)</th><th className="num">td (h)</th><th className="num">Lag λ (h)</th><th className="num">OD₀ (ajustada)</th><th className="num">OD máx</th><th className="num">R²</th><th className="num" data-tip={'R² ajustado por grados de libertad = 1 − (1 − R²)·(n − 1)/(n − p)\nEs el «R-square» que informa DMFit'}>R² ajustado</th><th className="num">EE del ajuste</th><th className="num" data-tip="Grados de libertad: puntos menos parámetros">n − p</th></tr></thead>
         <tbody>{filas.map((a, i) => [(a.c.ok ? (
           <tr key={a.id}><td><i className="punto" style={{ background: a.color, marginRight: 6 }} /><b>{a.nombre}</b>{a.c.variante && a.c.variante !== 'completo' && <small className="ayuda" data-tip={(a.c.notaVariante ? a.c.notaVariante + '\n' : '') + 'Variante del modelo elegida según los datos, como DMFit:\nsin lag si el lag del modelo completo da 0; sin meseta si los datos no llegan a la fase estacionaria'}> · {NOMBRE_VARIANTE[a.c.variante]}</small>}</td>
-            <td className="num">{V(a, 'mu', <>{fs(a.c.mu, 4)}{finito(a.c.ee_mu) && <small className="ayuda"> ± {fs(a.c.ee_mu, 2)}</small>}</>)}</td><td className="num">{V(a, 'td', pmOd(fs(Math.LN2 / a.c.mu, 3), a.c.ee_td))}</td><td className="num">{V(a, 'lag', <>{fs(a.c.lag_h, 3)}{finito(a.c.ee_lag) && a.c.ee_lag > 0 && <small className="ayuda"> ± {fs(a.c.ee_lag, 2)}</small>}{a.c.lagFijo && <small className="ayuda"> (fijo)</small>}</>)}</td><td className="num">{V(a, 'y0', pmOd(fs(10 ** a.c.y0, 3), 10 ** a.c.y0 * Math.LN10 * a.c.ee_y0))}</td>
-            <td className="num">{a.c.sinAsintota ? 'sin meseta' : V(a, 'yEnd', pmOd(fs(10 ** a.c.yEnd, 3), 10 ** a.c.yEnd * Math.LN10 * a.c.ee_ymax))}</td><td className="num">{V(a, 'r2', fx(a.c.r2, 3))}</td><td className="num">{fx(a.c.r2adj, 3)}</td><td className="num">{V(a, 'se', fs(a.c.se, 3))}</td><td className="num">{V(a, 'gl', String(a.c.gl))}</td></tr>
+            <td className="num">{V(a, 'mu', ve(a.c.mu, a.c.ee_mu, 4))}</td><td className="num">{V(a, 'td', ve(Math.LN2 / a.c.mu, a.c.ee_td, 3))}</td><td className="num">{V(a, 'lag', <>{ve(a.c.lag_h, a.c.ee_lag, 3)}{a.c.lagFijo && <small className="ayuda"> (fijo)</small>}</>)}</td><td className="num">{V(a, 'y0', ve(10 ** a.c.y0, 10 ** a.c.y0 * Math.LN10 * a.c.ee_y0, 3))}</td>
+            <td className="num">{a.c.sinAsintota ? 'sin meseta' : V(a, 'yEnd', ve(10 ** a.c.yEnd, 10 ** a.c.yEnd * Math.LN10 * a.c.ee_ymax, 3))}</td><td className="num">{V(a, 'r2', fx(a.c.r2, 3))}</td><td className="num">{fx(a.c.r2adj, 3)}</td><td className="num">{V(a, 'se', fs(a.c.se, 3))}</td><td className="num">{V(a, 'gl', String(a.c.gl))}</td></tr>
         ) : <tr key={a.id}><td><i className="punto" style={{ background: a.color, marginRight: 6 }} /><b>{a.nombre}</b></td><td colSpan={9} className="ayuda">{a.c.motivo}</td></tr>),
           porRep && filas[i + 1]?.cepa !== a.cepa && (() => { const r = resumenCepa(a.cepa); return r.n > 0 && (
             <tr key={'media' + a.cepa} className="total"><td><b>{a.cepa} · media ± DE</b> <small className="ayuda">(n = {r.n})</small></td>
@@ -276,7 +160,7 @@ export function ParametrosOd({ s, ajustes = [], modelo = 'no' }) {
     {(modelo === 'baranyi' || modelo === 'huang' || modelo === 'lineal') && ajustes.length > 0 && (
       <div className="tarjeta">
         <EcuacionModelo tipo="od" nombreArchivo="modelo OD" filas={ajustes.map((a) => ({ id: a.id, nombre: a.nombre, color: a.color, c: modelo !== 'lineal' ? a.cc : a.c, aviso: a.aviso }))}
-          nota={modelo === 'lineal' ? 'Linealizar log₁₀: log₁₀(OD) = a + b·t en la fase exponencial de cada cepa.' : `${MODELOS_UFC[modelo]} sobre ln(OD), con todos los puntos.`} />
+          nota={modelo === 'lineal' ? 'Linealizar log₁₀: log₁₀(OD) = a + b·t en la fase exponencial de cada cepa.' : `${MODELOS_UFC[modelo]} sobre ln(OD), ${ajustes.some((a) => a.id !== a.cepa) ? 'con las lecturas de cada réplica' : 'con la media de las réplicas en cada tiempo'}.`} />
       </div>
     )}
     {!s.porCepa && (
@@ -293,7 +177,7 @@ export function ParametrosOd({ s, ajustes = [], modelo = 'no' }) {
               <td><button className="fantasma chico" onClick={() => setSel(r.Pocillo)} data-tip="Ver su ecuación arriba"><b>{r.Pocillo}</b></button></td><td>{r.Muestra}</td><td className="num">{r.Replica}</td>
               {claves.map((k) => <td key={k} className="num"><Valor f={fichaCurva(s, r, k)}>{fs(r[k], 4)}</Valor></td>)}
               <td>{finito(r.t_ini_ventana) ? `${fx(r.t_ini_ventana, 2)}–${fx(r.t_fin_ventana, 2)} h${r.ventana_manual ? ' (manual)' : ''}` : '–'}</td>
-              <td style={{ whiteSpace: 'normal', minWidth: 200, fontSize: 12 }}>{r.aviso}</td>
+              <td style={{ whiteSpace: 'normal', minWidth: 200, fontSize: 12.5 }}>{r.aviso}</td>
             </tr>
           ))}</tbody>
         </table></div>
@@ -303,44 +187,39 @@ export function ParametrosOd({ s, ajustes = [], modelo = 'no' }) {
   </>)
 }
 
-// ---------- μ por OD y por recuento (va en «OD ↔ UFC») ----------
-// μ por OD (resumen de las réplicas, ventana de mayor pendiente) y por recuento (modelo de las UFC), por cepa: la misma fuente
-// para la pantalla OD ↔ UFC y para Datos
-export function comparacionMu(s) {
-  const resumen = s.res?.length ? resumenPorCepa(s.res, ['mu_max', 'td_h', 'lag_h']) : []
-  const crec = s.ufcRes?.hay ? crecimientoPorCepa(s.ufcRes, s.exp.aj) : []
-  return [...new Set([...resumen.map((r) => r.Muestra), ...crec.map((x) => x.Muestra)])].map((m) => {
-    const r = resumen.find((x) => x.Muestra === m), c = crec.find((x) => x.Muestra === m)?.c
-    return { Muestra: m, r, c, mu_OD_h: r?.mu_max.m, mu_UFC_h: c?.ok ? c.mu : NaN, cociente: r && c?.ok ? r.mu_max.m / c.mu : NaN, td_OD_h: r?.td_h.m, td_UFC_h: c?.ok ? c.td_h : NaN, lag_OD_h: r?.lag_h.m, lag_UFC_h: c?.ok ? c.lag_h : NaN }
-  })
-}
 export function SeccionComparacion({ s }) {
-  const resumen = useMemo(() => (s.res?.length ? resumenPorCepa(s.res, ['mu_max', 'td_h', 'lag_h']) : []), [s.res])
-  const crec = s.ufcRes?.hay ? crecimientoPorCepa(s.ufcRes, s.exp.aj) : []
-  const cepas = [...new Set([...resumen.map((r) => r.Muestra), ...crec.map((x) => x.Muestra)])]
+  // μ por OD con el método elegido en «Modelo» de Curva OD; μ por recuento con el modelo de Curva UFC (comparacionMu)
+  const filas = comparacionMu(s)
+  const mUfc = MODELOS_UFC[modeloUfc(s.exp.aj)]
+  const od = filas.map((f) => f.x).filter(Boolean)
+  const distintos = filas.some((f) => f.x && f.c?.ok && f.x.metodo !== f.c.modelo)
+  const pm = ve
   return (
     <div className="tarjeta">
-      <h2>μ por OD y por recuento</h2>
+      <h2>μ por OD y por recuento <span className="ayuda" style={{ fontWeight: 400 }}>· OD: {textoMetodoOd(s, od)} · recuento: {mUfc}</span></h2>
       <div className="tabla-scroll"><table className="tabla">
-        <thead><tr><th>Cepa</th><th className="num">μ por OD (h⁻¹)</th><th className="num">μ por recuento (h⁻¹)</th><th className="num" data-tip="Si la OD siguiera exactamente a las células viables, ≈ 1">μ OD / μ recuento</th><th className="num">td OD (min)</th><th className="num">td recuento (min)</th><th className="num">λ OD (h)</th><th className="num">λ recuento (h)</th></tr></thead>
-        <tbody>{cepas.map((m) => {
-          const r = resumen.find((x) => x.Muestra === m), c = crec.find((x) => x.Muestra === m)?.c
-          const q = r && c?.ok ? r.mu_max.m / c.mu : NaN
+        <thead><tr><th>Cepa</th><th className="num">μ por OD (h⁻¹)</th><th className="num">μ por recuento (h⁻¹)</th><th className="num" data-tip="Si la OD siguiera exactamente a las células viables, ≈ 1">μ OD / μ recuento</th><th className="num">td OD (h)</th><th className="num">td recuento (h)</th><th className="num">λ OD (h)</th><th className="num">λ recuento (h)</th></tr></thead>
+        <tbody>{filas.map(({ Muestra: m, x, c, cociente: q }) => {
           const fU = (foco) => () => fichaModeloUfc(c, puntosUfc(s.ufcRes, m, s.exp.aj), { foco, nombre: m, color: s.colores[m] })
+          // con un modelo ajustado por cepa cada número abre la ficha del modelo; con la ventana, la del resumen de réplicas
+          const fO = (foco) => (x?.a ? () => fichaModeloOd(x.a.c, x.a.pts, { foco, nombre: m, color: s.colores[m] }) : null)
+          const celdaOd = (k, foco, v, e, d) => (!x ? <td className="num">–</td> : x.metodo === 'ventana' ? <CeldaResumen r={x.r} k={k} s={s} /> : <td className="num"><Valor f={fO(foco)}>{pm(v, e, d)}</Valor></td>)
           return (
-            <tr key={m}><td><i className="punto" style={{ background: s.colores[m], marginRight: 6 }} /><b>{m}</b></td>
-              {r ? <CeldaResumen r={r} k="mu_max" s={s} /> : <td className="num">–</td>}
-              <td className="num">{c?.ok ? <Valor f={fU('mu')}>{fs(c.mu, 4)}</Valor> : '–'}</td>
-              <td className="num"><Valor f={() => fichaComparacion(m, r, c)}><b>{fx(q, 2)}</b></Valor></td>
-              {r ? <CeldaResumen r={r} k="td_h" s={s} /> : <td className="num">–</td>}
-              <td className="num">{c?.ok ? <Valor f={fU('td')}>{fs(c.td_h, 4)}</Valor> : '–'}</td>
-              {r ? <CeldaResumen r={r} k="lag_h" s={s} /> : <td className="num">–</td>}
-              <td className="num">{c?.ok && finito(c.lag_h) ? <Valor f={fU('lag')}>{fs(c.lag_h, 3)}</Valor> : '–'}</td>
+            <tr key={m}><td><i className="punto" style={{ background: s.colores[m], marginRight: 6 }} /><b>{m}</b>{x?.respaldo ? <small className="aviso-texto" data-tip={x.respaldo}> ⚠</small> : null}</td>
+              {celdaOd('mu_max', 'mu', x?.mu, x?.err, 4)}
+              <td className="num">{c?.ok ? <Valor f={fU('mu')}>{pm(c.mu, c.ee_mu, 4)}</Valor> : '–'}</td>
+              <td className="num"><Valor f={() => fichaComparacion(m, x, c)}><b>{fx(q, 2)}</b></Valor></td>
+              {celdaOd('td_h', 'td', x?.td, x?.errTd, 4)}
+              <td className="num">{c?.ok ? <Valor f={fU('td')}>{pm(c.td_h, c.ee_td, 4)}</Valor> : '–'}</td>
+              {celdaOd('lag_h', 'lag', x?.lag, x?.errLag, 3)}
+              <td className="num">{c?.ok && finito(c.lag_h) ? <Valor f={fU('lag')}>{pm(c.lag_h, c.ee_lag, 3)}</Valor> : '–'}</td>
             </tr>
           )
         })}</tbody>
       </table></div>
-      <p className="ayuda" style={{ marginTop: 6 }}>μ OD: pendiente de ln(OD) en la fase exponencial ({s.porCepa ? 'curva de la cepa' : 'media de las réplicas'}). μ UFC: ajuste del modelo a ln(UFC/mL). Cociente descriptivo, sin prueba estadística.</p>
+      <p className="ayuda" style={{ marginTop: 6 }}>μ por OD: {textoMetodoOd(s, od)}. μ por recuento: {mUfc} sobre ln(UFC/mL) de la media de cada tiempo. Cociente descriptivo, sin prueba estadística.</p>
+      {distintos && <p className="aviso-texto" style={{ marginTop: 4 }}>Las dos μ salen de métodos distintos. Para comparar con el mismo método, elegí el mismo modelo en «Modelo» de Curva OD y de Curva UFC.</p>}
     </div>
   )
 }
+

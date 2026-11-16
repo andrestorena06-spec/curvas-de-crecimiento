@@ -1,89 +1,24 @@
-import { MODELOS_UFC, lineasMedia, valorUfc, tipValorUfc, tramoUfcRige, ajusteCepaUfc, modeloUfc, centroLog10, centroUfc, curvaUfc, errorTextoUfc, errorUfc, etiquetaErrorUfc, fasesUfc, fraccionExp, textoErrorUfc } from '../../calculo/ufc/index.js'
+import { valorUfc, tipValorUfc, centroUfc, errorTextoUfc, errorUfc, etiquetaErrorUfc } from '../../calculo/ufc/index.js'
 import { etiquetaOd } from '../../calculo/od/pipeline.js'
 import { useOpcion } from '../../ui/opciones.js'
 import { useMemo, useState } from 'react'
-import { MODELOS_CALIB, ajustarCalibracion, fueraDeRango, odDesdeUfc, odDesdeUfcConError } from '../../calculo/calibracion/calibracion.js'
-import { finito, interpolar, media } from '../../calculo/comun/analisis.js'
+import { MODELOS_CALIB, fueraDeRango, odDesdeUfcConError } from '../../calculo/calibracion/calibracion.js'
+import { finito, media } from '../../calculo/comun/analisis.js'
 import { useTema } from '../../estilo/tema.js'
-import { Campo, Encabezado, Icono, Num, Sel, Vacio } from '../../ui/base.jsx'
-import { BotonCinta, Cajon, CampoCinta, Cinta, Grupo, Mosaico, OpcionesCinta } from '../../ui/cinta.jsx'
+import { Encabezado, Num, Vacio } from '../../ui/base.jsx'
+import { BotonCinta, CampoCinta, Cinta, Grupo, OpcionesCinta } from '../../ui/cinta.jsx'
 import { GrupoMostrar, conEtiquetas, textoMostrar, useMostrar } from '../../ui/mostrar.jsx'
 import { Grafico } from '../../ui/graficos/grafico.jsx'
-import { fs, fx, sciCorto } from '../../comun/utils.js'
-import { egDeMedia, mediaPorTiempo, textoErrMedia } from '../od/Curva.jsx'
+import { fx, sci } from '../../comun/utils.js'
+import { mediaPorTiempo } from '../../calculo/od/medias.js'
 import { SelectorCepas, cepasOcultas } from '../../ui/cepas.jsx'
 import { Valor } from '../../fichas/FichaCalculo.jsx'
 import { fichaCalibracion, fichaConversion, fichaPar } from '../../fichas/index.js'
 import { fichaTiempoUfc } from '../ufc/CurvaUfc.jsx'
-import { SeccionComparacion, ajustesOd } from '../od/Parametros.jsx'
-import { tramoOdRige } from '../od/FasesCepa.jsx'
+import { SeccionComparacion } from '../od/Parametros.jsx'
 import { TablaValores } from '../../ui/ecuacion.jsx'
 import { EcCalibracion } from '../../ui/ecuacionBonita.jsx'
-
-// Series de OD para la calibración: las mismas del análisis (pre.analisis: OD corregida por el blanco y la dilución,
-// sin los puntos ni pocillos excluidos, sin suavizar ni normalizar), con las que se calculan los parámetros.
-export function seriesOdCalibracion(pre) {
-  if (!pre || pre.error) return []
-  return (pre.analisis || []).filter((w) => !w.EsBlanco)
-}
-
-// Pares OD–UFC de la misma cepa y tiempo (la OD media se interpola si no hay lectura exacta en ese tiempo)
-// tipoErr: error de la OD media (DE, EEM o IC 95 %) que acompaña a cada par. La UFC es el valor central de cada tiempo
-// (la media de las UFC/mL de las réplicas).
-export function paresOdUfc(s, tipoErr = 'sd') {
-  if (!s.pre || s.pre.error || !s.ufcRes?.hay) return []
-  const ws = seriesOdCalibracion(s.pre)
-  const cen = centroUfc(s.exp?.aj)
-  const out = []
-  s.ufcRes.res.filter((r) => finito(r.UFC_mL) && r.UFC_mL > 0).forEach((r) => {
-    const g = ws.filter((w) => w.Muestra === r.Muestra)
-    if (!g.length) return
-    const mt = mediaPorTiempo(g, (v) => v, tipoErr)
-    if (mt.length < 1) return
-    const ts = mt.map((q) => q.t / 3600)
-    if (r.T_h < ts[0] - 1e-9 || r.T_h > ts[ts.length - 1] + 1e-9) return
-    const exacto = mt.find((q) => Math.abs(q.t / 3600 - r.T_h) < 1e-6)
-    const od = exacto ? exacto.m : interpolar(ts, mt.map((q) => q.m), [r.T_h])[0]
-    const eOd = exacto ? exacto.hi - exacto.m : interpolar(ts, mt.map((q) => q.hi - q.m), [r.T_h])[0]
-    const lg = r.log10, u = r.UFC_mL
-    out.push({ Muestra: r.Muestra, T_h: r.T_h, OD: od, OD_err: eOd, _ufc: r, OD_interpolada: !exacto, UFC_mL: u, log10_UFC: lg })
-  })
-  return out
-}
-
-// Calibración OD ↔ UFC/mL de un experimento: los pares (con la fase de la OD y la de las UFC en cada tiempo, y si se usan)
-// y la recta log₁₀ UFC = m·OD + b de cada cepa. UNA sola función para la pantalla «OD ↔ UFC», Datos y Métodos.
-//   Por defecto se usan los pares de la fase exponencial COMÚN a OD y UFC (opción combinado.soloExp; apagada, todos);
-//   aj.calib_incl guarda los pares marcados o desmarcados a mano ({ 'cepa|T': true/false }).
-export function calibracionDe(s, tipoErr = 'sd') {
-  const { exp, ufcRes } = s
-  const pares = paresOdUfc(s, tipoErr)
-  const soloExp = exp.opciones?.['combinado.soloExp'] !== false
-  const ventOdE = (m) => tramoOdRige(s, m).ventana
-  const cepasU = ufcRes?.hay ? [...new Set(ufcRes.res.map((r) => r.Muestra))] : []
-  const fases = Object.fromEntries(cepasU.map((m) => [m, fasesUfc(ufcRes, m, exp.aj)]))
-  const tramosU = Object.fromEntries(cepasU.map((m) => [m, tramoUfcRige(ufcRes, m, exp.aj, fases[m])]))
-  // 'vacio' = los dos tramos no se solapan; null = ninguno detectado
-  const coincide = (m) => {
-    const a = ventOdE(m), b = tramosU[m]?.ventana || null
-    if (a && b) { const lo = Math.max(a[0], b[0]), hi = Math.min(a[1], b[1]); return lo <= hi + 1e-9 ? [lo, hi] : 'vacio' }
-    return a || b || null
-  }
-  const incl = exp.aj.calib_incl || {}
-  const paresF = pares.map((p) => {
-    const f = fases[p.Muestra]
-    const fase = f?.ok ? f.fase(p.T_h) : ''
-    const vm = coincide(p.Muestra)
-    const auto = !soloExp || (vm === 'vacio' ? false : vm ? p.T_h >= vm[0] - 1e-9 && p.T_h <= vm[1] + 1e-9 : !f?.ok || fase === 'exponencial')
-    const clave = `${p.Muestra}|${p.T_h}`
-    const vo = ventOdE(p.Muestra)
-    const faseOd = vo ? (p.T_h < vo[0] - 1e-9 ? 'lag' : p.T_h > vo[1] + 1e-9 ? 'estacionaria' : 'exponencial') : ''
-    return { ...p, fase, faseOd, auto, clave, manual: clave in incl, usado: clave in incl ? incl[clave] : auto }
-  })
-  const usados = paresF.filter((p) => p.usado)
-  const calCepa = Object.fromEntries([...new Set(paresF.map((p) => p.Muestra))].map((m) => [m, ajustarCalibracion(usados.filter((p) => p.Muestra === m).map((p) => ({ od: p.OD, ufc: p.UFC_mL })), 'clasico')]))
-  return { pares: paresF, usados, calCepa, fases, coincide, ventOdE, soloExp }
-}
+import { seriesOdCalibracion, calibracionDe } from '../../calculo/calibracion/pares.js'
 
 // Una ecuación de calibración (de una cepa o de todas juntas): la ecuación con formato de ecuación, sus números, y debajo
 // la calculadora (OD → UFC/mL y UFC/mL → OD) y la tabla de valores, igual que en «Ecuación del modelo» de las curvas
@@ -109,16 +44,16 @@ function BloqueCalib({ f, usados }) {
           <Valor f={ficha}><EcCalibracion c={c} /></Valor>
           <small>R² (log₁₀) = <Valor f={ficha}>{fx(c.R2, 3)}</Valor> · error típico = <Valor f={ficha}>{fx(c.sigma, 2)} log₁₀</Valor> · {c.n} pares · OD de {fx(c.rango[0], 2)} a {fx(c.rango[1], 2)}</small>
         </div>
-        {c.aviso && <div className="aviso-texto" style={{ fontSize: 12 }}>⚠ {c.aviso}</div>}
+        {c.aviso && <div className="aviso-texto" style={{ fontSize: 12.5 }}>⚠ {c.aviso}</div>}
         <div className="ec-calc">
           <div className="ec-conv">
             <div className="ec-conv-fila">
               <CampoCinta etiqueta="OD → UFC/mL"><Num value={od} onChange={setOd} ancho={84} /></CampoCinta>
               <span className="ec-flecha">→</span>
-              <b className="ec-res"><Valor f={() => fichaConversion(c, 'od', Number(od), uOd, { nombre: f.nombre, fuera: fueraDeRango(c, Number(od)), err: eU })}>{finito(uOd) ? sciCorto(uOd) : '–'}</Valor></b>
+              <b className="ec-res"><Valor f={() => fichaConversion(c, 'od', Number(od), uOd, { nombre: f.nombre, fuera: fueraDeRango(c, Number(od)), err: eU })}>{finito(uOd) ? sci(uOd) : '–'}</Valor></b>
               {finito(uOd) && <span className="ayuda">log₁₀ {fx(Math.log10(uOd), 2)}{finito(eU.U) ? ` ± ${fx(eU.U, 2)} (IC 95 %)` : ''}</span>}{finito(uOd) && chip(fueraDeRango(c, Number(od)))}
             </div>
-            {finito(eU.U) && <small className="ayuda" data-tip={`Intervalo de predicción 95 % de la calibración: log₁₀ UFC/mL ± t(0,975; ${c.gl}) · σ · √(1 + palanca)\nσ = error típico (${fx(c.sigma, 2)} log₁₀)`}>IC 95 % de {sciCorto(eU.lo)} a {sciCorto(eU.hi)} UFC/mL</small>}
+            {finito(eU.U) && <small className="ayuda" data-tip={`Intervalo de predicción 95 % de la calibración: log₁₀ UFC/mL ± t(0,975; ${c.gl}) · σ · √(1 + palanca)\nσ = error típico (${fx(c.sigma, 2)} log₁₀)`}>IC 95 % de {sci(eU.lo)} a {sci(eU.hi)} UFC/mL</small>}
           </div>
           <div className="ec-conv">
             <div className="ec-conv-fila">
@@ -179,7 +114,7 @@ export function Combinado({ s }) {
     if (!p.usado === p.auto) delete incl[clave]; else incl[clave] = !p.usado
     return { aj: { ...e.aj, calib_incl: incl } }
   })
-  if (!pre || pre.error || !ufcRes?.hay) return <div className="pagina"><Encabezado titulo="OD ↔ UFC" /><Vacio titulo="Faltan datos">Hacen falta curvas de OD procesadas y conteos de UFC.</Vacio></div>
+  if (!pre || pre.error || !ufcRes?.hay) return <div className="pagina"><Encabezado titulo="OD ↔ UFC" /><Vacio titulo="Faltan datos">Hacen falta curvas de OD procesadas y recuentos de UFC.</Vacio></div>
 
   // fichas: par OD–UFC (con las lecturas de OD de ese tiempo, o la interpolación) y calibración con sus pares
   const fPar = (p) => () => {
@@ -205,7 +140,7 @@ export function Combinado({ s }) {
     data: pv.filter((p) => p.Muestra === m && p.usado === uso && finito(xv(p.OD))).map((p) => {
       const e = errorUfc(p._ufc, modoU, tipoErr, cen)
       return { x: xv(p.OD), y: logOd ? p.log10_UFC : p.UFC_mL / kU, lo: e.lo / kU, hi: e.hi / kU, xlo: finito(p.OD_err) ? xv(p.OD - p.OD_err) : NaN, xhi: finito(p.OD_err) ? xv(p.OD + p.OD_err) : NaN,
-        valor: textoMostrar(mo, logOd ? fx(p.log10_UFC, 2) : sciCorto(p.UFC_mL), errorTextoUfc(e, !logOd)),
+        valor: textoMostrar(mo, logOd ? fx(p.log10_UFC, 2) : sci(p.UFC_mL), errorTextoUfc(e, !logOd)),
         key: p.clave,
         tip: `${m} · T = ${p.T_h} h${p.fase ? ` · ${FASE[p.fase]}` : ''}\n${uso ? 'Usado' : 'No usado'} en la recta${p.manual ? ' (elegido a mano)' : ''} · clic para ${uso ? 'excluirlo' : 'incluirlo'}\nOD = ${fx(p.OD, 3)}${finito(p.OD_err) ? ` ± ${fx(p.OD_err, 3)} (${nomErr})` : ''}${p.OD_interpolada ? ' (interpolada)' : ''}\n${tipValorUfc(p._ufc, cen, tipoErr).join('\n')}` }
     }) })))
@@ -234,7 +169,7 @@ export function Combinado({ s }) {
             ? <p className="aviso-caja"><b>Blanco posiblemente inválido:</b> {nNeg} de {pv.length} OD corregidas por el blanco son ≤ 0. Un blanco con más absorbancia que las muestras (medio distinto, cubeta sucia, burbujas) desplaza toda la recta. Revisá el blanco antes de usar esta calibración.</p>
             : null
         })()}
-        {pv.length < 3 ? <p className="aviso-caja">Hacen falta al menos 3 pares OD–UFC (misma cepa y tiempo) dentro del rango de tiempo de la OD.</p> : (
+        {pv.length < 2 ? <p className="aviso-caja">Hacen falta al menos 2 pares OD–UFC (misma cepa y tiempo) dentro del rango de tiempo de la OD; para estimar el error, 3 o más.</p> : (
           <Grafico series={calSeries} xTxt={logX ? 'log₁₀ OD' : 'OD'} yTxt={yTxtU} alto={340} nombre="calibracion" estilo={s.estiloGrafico('calibracion')} idEstilo="calibracion" onPuntoClick={alternar} />
         )}
         <div className="ec-modelo" style={{ marginTop: 14 }}>
@@ -246,10 +181,10 @@ export function Combinado({ s }) {
       <div className="tarjeta">
         <h2>Pares OD–UFC</h2>
         <div className="tabla-scroll"><table className="tabla">
-          <thead><tr><th>Usar</th><th>Cepa</th><th className="num">T (h)</th><th data-tip={'Fase de la OD y de las UFC en ese tiempo\nMarcado por defecto: exponencial en las dos'}>Fase OD</th><th>Fase UFC</th><th className="num" data-tip={'Media de las réplicas de OD en ese tiempo\nCorregida por el blanco, sin suavizar ni normalizar'}>OD media (neta)</th><th className="num">UFC/mL</th><th className="num">log₁₀ UFC</th></tr></thead>
+          <thead><tr><th>Usar</th><th>Cepa</th><th className="num">t (h)</th><th data-tip={'Fase de la OD y de las UFC en ese tiempo\nMarcado por defecto: exponencial en las dos'}>Fase OD</th><th>Fase UFC</th><th className="num" data-tip={'Media de las réplicas de OD en ese tiempo\nCorregida por el blanco, sin suavizar ni normalizar'}>OD media (neta)</th><th className="num">UFC/mL</th><th className="num">log₁₀ UFC</th></tr></thead>
           <tbody>{pv.map((p) => (
             <tr key={p.Muestra + p.T_h} className={p.usado ? '' : 'fuera'}><td><input type="checkbox" checked={p.usado} onChange={() => alternar(p.clave)} data-tip={p.usado ? 'Excluir este par de la recta' : 'Incluir este par en la recta'} />{p.manual && <small className="ayuda"> a mano</small>}</td><td>{p.Muestra}</td><td className="num">{p.T_h}</td><td>{p.faseOd ? FASE[p.faseOd] : '–'}</td><td>{p.fase ? FASE[p.fase] : '–'}</td><td className="num"><Valor f={fPar(p)}>{fx(p.OD, 3)}</Valor>{p.OD_interpolada && <small className="ayuda" data-tip="No había lectura de OD en ese tiempo: se interpoló linealmente entre las lecturas vecinas."> (interp.)</small>}</td>
-              <td className="num"><Valor f={() => fichaTiempoUfc(ufcRes, exp.aj, p.Muestra, p.T_h)}>{sciCorto(p.UFC_mL)}</Valor></td><td className="num">{fx(p.log10_UFC, 2)}</td></tr>
+              <td className="num"><Valor f={() => fichaTiempoUfc(ufcRes, exp.aj, p.Muestra, p.T_h)}>{sci(p.UFC_mL)}</Valor></td><td className="num">{fx(p.log10_UFC, 2)}</td></tr>
           ))}</tbody>
         </table></div>
       </div>

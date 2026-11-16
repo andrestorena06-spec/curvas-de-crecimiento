@@ -3,7 +3,21 @@
 // Todo el tiempo está en HORAS salvo que se indique otra unidad.
 // ============================================================
 
+import { fx } from '../../comun/utils.js'
 export const finito = Number.isFinite
+
+// ---- cuota de la ventana exponencial (como fit_easylinear de growthrates): UNA sola implementación para OD y recuentos ----
+// fracción (0–1) a partir de aj.an_quota en % (95 por defecto; 0 o vacío inválido = no ampliar)
+export const cuotaDe = (aj) => { const v = aj?.an_quota === undefined || aj?.an_quota === '' ? 95 : Number(aj.an_quota); return finito(v) && v > 0 && v < 100 ? v / 100 : NaN }
+// índices [L, R] de las ventanas contiguas a la i cuya pendiente es ≥ cuota · la de la ventana i
+export function vecinasPorCuota(pendientes, i, cuota) {
+  let L = i, R = i
+  if (!(finito(cuota) && cuota > 0 && cuota < 1) || i < 0) return [L, R]
+  const lim = cuota * pendientes[i]
+  while (L > 0 && finito(pendientes[L - 1]) && pendientes[L - 1] >= lim) L--
+  while (R < pendientes.length - 1 && finito(pendientes[R + 1]) && pendientes[R + 1] >= lim) R++
+  return [L, R]
+}
 export const NA = NaN
 
 export const mediana = (v) => {
@@ -400,7 +414,7 @@ export function analizarCurva(tIn, yIn, op, ventanaManual = null) {
     if (!cand.length) {
       cand = vent.filter((v) => finito(v.pendiente) && completa(v))
       if (!cand.length) cand = vent.filter((v) => finito(v.pendiente))
-      avisos.push(`R2 de la ventana menor que ${op.r2min.toFixed(2)}`)
+      avisos.push(`R2 de la ventana menor que ${fx(op.r2min, 2)}`)
     }
     if (!cand.length) {
       r.aviso = [...avisos, ...(od0Bajo ? [avisoOd0] : []), 'No se pudo ajustar'].join('; ')
@@ -412,10 +426,9 @@ export function analizarCurva(tIn, yIn, op, ventanaManual = null) {
     sel = { a: cand[j].intercepto, b: cand[j].pendiente, r2: cand[j].r2, n: cand[j].n, t_ini: cand[j].t_ini, t_fin: cand[j].t_fin, manual: false }
     // quota (como fit_easylinear de growthrates): las ventanas contiguas con pendiente ≥ quota · máxima se suman a la mejor y se reajusta la recta
     if (finito(op.quota) && op.quota > 0 && op.quota < 1 && sel.b > 0) {
-      let L = vent.findIndex((v) => v.t_ini === sel.t_ini && v.t_fin === sel.t_fin), R = L
-      if (L >= 0) {
-        while (L > 0 && finito(vent[L - 1].pendiente) && vent[L - 1].pendiente >= op.quota * sel.b) L--
-        while (R < vent.length - 1 && finito(vent[R + 1].pendiente) && vent[R + 1].pendiente >= op.quota * sel.b) R++
+      const i0 = vent.findIndex((v) => v.t_ini === sel.t_ini && v.t_fin === sel.t_fin)
+      if (i0 >= 0) {
+        const [L, R] = vecinasPorCuota(vent.map((v) => v.pendiente), i0, op.quota)
         const ini = vent[L].t_ini, fin = vent[R].t_fin
         if (ini < sel.t_ini - 1e-9 || fin > sel.t_fin + 1e-9) {
           const ix = tH.map((_, i) => i).filter((i) => tH[i] >= ini - 1e-9 && tH[i] <= fin + 1e-9 && y[i] >= op.lnmin && y[i] > 0)

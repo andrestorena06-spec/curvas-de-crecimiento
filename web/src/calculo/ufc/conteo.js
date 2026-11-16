@@ -4,31 +4,10 @@
 //   Tiempo: media aritmética de las réplicas; error DE, EEM o IC 95 % sobre los valores lineales.
 //   En log₁₀: log₁₀ de la media; la barra va de log₁₀(media − error) a log₁₀(media + error).
 // ============================================================
-import { LETRAS, convertirNumero } from '../od/lectura.js'
-import { desvio, finito, interpolar, media } from '../comun/analisis.js'
+import { desvio, finito, media } from '../comun/analisis.js'
 import { ERRORES, errorElegido, resumenReplicas } from '../comun/estadistica.js'
-import { fx, sciCorto, tCuantil } from '../../comun/utils.js'
+import { fx, sci } from '../../comun/utils.js'
 
-// ---------- parámetros ----------
-export const ufcDef = () => ({
-  vol: 0.02,            // mL por gota
-  factor: 5,            // cada pocillo está `factor` veces más diluido que el anterior (= volumen final / toma)
-  toma: 40, final: 200, // µL que se pasan de un pocillo al siguiente y volumen final de cada pocillo
-  primero: 'dilucion',  // 'madre': el pocillo 1 es la solución madre · 'dilucion': el pocillo 1 ya es una dilución
-  madre: { usar: false, toma: 20, final: 200 },  // solución madre (opcional): se toma `toma` µL para llegar al pocillo 1 con volumen `final`
-  c0: 1e6,              // UFC/mL esperadas en el pocillo de partida a T = 0 (solo guía)
-  min: 3, max: 30,      // colonias por gota que se consideran contables
-  tiempos: [0, 1, 2, 3, 4, 5, 6],
-  esperadoDe: 'od',     // 'od' (según la curva de OD) o 'manual'
-  estimados: true,      // incluir en las medias las estimaciones fuera del rango contable
-})
-export const tablaDef = () => ({ vol: 100, factor: 10, min: 25, max: 250, nd: 6, filas: [] })  // vol en µL
-
-// metodo: 'gota' (gotas sobre una placa de 96 con diluciones seriadas) o 'extendida' (placas de Petri, tabla o sectores)
-// petri: [{ id, nombre, n (sectores), sectores: [{ muestra, t, lineas: [{ id, k (dilución −k), rep, n (colonias) }] }] }]
-// placasG: placas de 96 con gotas: [{ id, nombre, filas: { A: { muestra, t, rep, desde, hasta } }, conteos: { A1: n } }]
-//   cada FILA es una réplica de una muestra a un tiempo; cada COLUMNA, una dilución seriada (de `desde` a `hasta`)
-export const ufcVacio = () => ({ metodo: 'gota', par: ufcDef(), placasG: [], esperado: {}, tabla: tablaDef(), petri: [] })
 
 // factor que hay que aplicar a la columna j respecto de la suspensión original: D(j) = mult × f^j
 export const multDe = (par) => {
@@ -37,48 +16,8 @@ export const multDe = (par) => {
   const f0 = par.madre?.usar && par.madre.toma > 0 ? par.madre.final / par.madre.toma : f
   return f0 / f
 }
-export const dilucionDe = (par, j) => multDe(par) * par.factor ** j
-// «10^−x» con el orden de magnitud de la dilución (para los encabezados)
-export const potenciaDe = (par, j) => -Math.log10(dilucionDe(par, j))
-const SUP = { '-': '⁻', '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹', '.': '·' }
-export const texto10 = (x) => '10' + String(Number(x.toFixed(2))).replace(/[-0-9.]/g, (c) => SUP[c])
 
-// sesiones anteriores: una grilla de muestras por pocillo + un bloque de conteos por tiempo -> una placa por tiempo
-export function placasDeGrilla(layout, conteos, esperado) {
-  const filasLetra = [...new Set(layout.map((c) => c.Pocillo[0]))].sort()
-  const muestraDe = (L) => layout.find((c) => c.Pocillo[0] === L)?.Muestra
-  const repDe = {}
-  const reps = {}
-  filasLetra.forEach((L) => { const m = muestraDe(L); reps[m] = (reps[m] || 0) + 1; repDe[L] = reps[m] })
-  const ts = Object.keys(conteos).map(Number).filter((x) => Number.isFinite(x)).sort((a, b) => a - b)
-  return ts.map((t, i) => ({
-    id: 'g' + i + Math.random().toString(36).slice(2, 6), nombre: `Placa T=${t} h`,
-    filas: Object.fromEntries(filasLetra.map((L) => [L, { muestra: muestraDe(L), t, rep: repDe[L], desde: 1, hasta: 12 }])),
-    conteos: { ...(conteos[claveT(t)] || {}) },
-  }))
-}
-
-export const normalizarUfc = (u = {}) => {
-  const d = ufcVacio()
-  const petri = Array.isArray(u.petri) ? u.petri : []
-  const filasTabla = Array.isArray(u.tabla?.filas) ? u.tabla.filas : []
-  return {
-    metodo: u.metodo || (!(Array.isArray(u.layout) && u.layout.length) && (filasTabla.length || petri.length) ? 'extendida' : 'gota'),
-    petri,
-    par: { ...d.par, ...(u.par || {}), madre: { ...d.par.madre, ...(u.par?.madre || {}) } },
-    placasG: Array.isArray(u.placasG) ? u.placasG : (Array.isArray(u.layout) && u.layout.length && u.conteos ? placasDeGrilla(u.layout, u.conteos) : []),
-    esperado: u.esperado && typeof u.esperado === 'object' ? u.esperado : {},
-    tabla: { ...d.tabla, ...(u.tabla || {}), filas: Array.isArray(u.tabla?.filas) ? u.tabla.filas : [] },
-  }
-}
 export const lineasPetri = (u) => (u.petri || []).flatMap((p) => (p.sectores || []).flatMap((s, i) => (s?.lineas || []).map((l) => ({ ...l, placa: p.nombre, sector: i + 1, muestra: s.muestra, t: s.t }))))
-export const hayConteos = (u) => (u.metodo === 'extendida'
-  ? (u.tabla?.filas || []).some((f) => Object.values(f.c || {}).some(finito)) || lineasPetri(u).some((l) => finito(l.n))
-  : (u.placasG || []).some((p) => Object.values(p.conteos || {}).some(finito)))
-
-const colDe = (p) => Number(p.slice(1))
-const filaDe = (p) => p[0]
-export const claveT = (t) => String(Math.round(Number(t) * 1000) / 1000)
 
 // ---------- estimación de UFC/mL de una réplica ----------
 // cont: { k: colonias } (k = columna de la dilución); par: { vol (mL), factor, min, max, D: [dilución total por columna], usar: k elegido a mano }
@@ -87,7 +26,7 @@ export const claveT = (t) => String(Math.round(Number(t) * 1000) / 1000)
 export const dilDe = (par, k) => (par.D && finito(par.D[k]) ? par.D[k] : (par.mult || 1) * par.factor ** k)
 const entradas = (cont) => Object.entries(cont || {}).map(([k, c]) => [Number(k), Number(c)]).filter(([k, c]) => finito(k) && finito(c) && c >= 0)
 
-// Dilución sugerida: la única con conteo; si hay varias, la que cae dentro del rango contable (si hay más de una,
+// Dilución sugerida: la única con recuento; si hay varias, la que cae dentro del rango contable (si hay más de una,
 // la de más colonias, que tiene menor error relativo de Poisson); si ninguna está en rango, la más cercana al rango;
 // si todas dieron 0, la menos diluida (da el límite de detección más bajo).
 export function sugerirDilucion(cont, par) {
@@ -105,7 +44,7 @@ export function sugerirDilucion(cont, par) {
 
 // Todas las réplicas de una cepa en un mismo tiempo usan la MISMA dilución. Sugerencia: la dilución con más
 // réplicas dentro del rango contable; a igualdad, la que tienen más réplicas y después la de más colonias
-// (sin pasar el doble del máximo). Si ninguna réplica tiene conteos en rango, la que daría la mejor estimación.
+// (sin pasar el doble del máximo). Si ninguna réplica tiene recuentos en rango, la que daría la mejor estimación.
 export function sugerirDilucionGrupo(conts, par) {
   const ks = [...new Set(conts.flatMap((c) => entradas(c).map(([k]) => k)))]
   if (!ks.length) return null
@@ -139,7 +78,6 @@ export function estimarUfc(cont, par) {
   const estado = c < par.min ? 'bajo' : c > par.max ? 'alto' : 'ok'
   return { ufc: c / D, lo: NaN, hi: NaN, estado, lim: NaN, ...base }
 }
-
 
 // ---------- recuentos de una experiencia ----------
 // Una fila por réplica: { Muestra, T_h, Replica, Fila, origen, cont, par }
@@ -182,7 +120,7 @@ export function registrosConteo(u) {
 
 const NOMBRE_ESTADO = {
   ok: 'En rango', bajo: 'Estimado (bajo el rango)', alto: 'Estimado (sobre el rango)', cero: 'Menor que el límite de detección',
-  incontable: 'Incontable (sobre el rango)', sin_datos: 'Sin datos', sin_dilucion: 'Sin conteo en la dilución de la cepa',
+  incontable: 'Incontable (sobre el rango)', sin_datos: 'Sin datos', sin_dilucion: 'Sin recuento en la dilución de la cepa',
 }
 export const textoEstado = (e) => NOMBRE_ESTADO[e] || e
 
@@ -267,18 +205,12 @@ export function errorTextoUfc(e, lin) {
   if (e.rango) return finito(e.hi) ? `[${finito(e.lo) ? f(e.lo) : '–'} – ${f(e.hi)}]` : ''
   return finito(e.err) ? `± ${f(e.err)}` : ''
 }
-export function textoErrorUfc(e, lin) {
-  const f = (v) => (lin ? sciUfc(v) : v.toFixed(2).replace('.', ','))
-  if (!finito(e.m)) return ''
-  const t = errorTextoUfc(e, lin)
-  return t ? `${f(e.m)}\n${t}` : f(e.m)
-}
-export const sciUfc = sciCorto
+export const sciUfc = sci
 // Líneas del globo (tooltip) del valor de una cepa en un tiempo; cada pantalla pone el encabezado y la indicación del clic
 export function tipValorUfc(r, centro, tipo = 'sd') {
   if (!r) return []
   const est = estadisticaUfc(r), eg = errorMediaUfc(est, tipo)
-  return lineasMedia({ m: est.m, eg, n: est.n, unidad: 'UFC/mL', fmt: sciCorto, extra: finito(r.Colonias_suma) ? `${r.Colonias_suma} colonias` : '' })
+  return lineasMedia({ m: est.m, eg, n: est.n, unidad: 'UFC/mL', fmt: sci, extra: finito(r.Colonias_suma) ? `${r.Colonias_suma} colonias` : '' })
 }
 // texto común de OD y UFC: media (y su log₁₀), error con su rango (y el rango en log₁₀) y n
 export function lineasMedia({ m, eg, n, unidad, fmt, extra = '' }) {
@@ -289,107 +221,5 @@ export function lineasMedia({ m, eg, n, unidad, fmt, extra = '' }) {
   return out
 }
 
-// ---------- concentración esperada (guía de la grilla de gotas) ----------
-export const tiemposG = (u) => [...new Set((u.placasG || []).flatMap((p) => Object.values(p.filas || {}).filter((f) => f && f.muestra).map((f) => Number(f.t))))].filter(finito).sort((a, b) => a - b)
-export function esperadoStock(ufc, curva) {
-  const out = {}
-  const { par, esperado } = ufc
-  tiemposG(ufc).forEach((t) => {
-    const k = claveT(t)
-    if (par.esperadoDe === 'manual' && finito(esperado[k])) { out[k] = esperado[k]; return }
-    if (par.esperadoDe === 'od' && curva && curva.t.length > 2) {
-      const y0 = curva.y[0]
-      const yt = interpolar(curva.t, curva.y, [t * 3600])[0]
-      if (finito(y0) && y0 > 0 && finito(yt)) { out[k] = par.c0 * (yt / y0); return }
-    }
-    out[k] = finito(esperado[k]) ? esperado[k] : par.c0
-  })
-  return out
-}
-export const coloniasEsperadas = (stock, j, par) => (stock / dilucionDe(par, j)) * par.vol
 export const contable = (n, par) => finito(n) && n >= par.min && n <= par.max
 
-// ------------------------------------------------------------
-// Lectura de una plantilla / planilla de conteos desde Excel (matriz cruda): bloques «T=<horas>»
-// Las celdas con TEXTO son muestras; las celdas con NÚMEROS son conteos de colonias.
-// ------------------------------------------------------------
-export function leerPlantillaUfc(raw) {
-  const re = /^\s*T\s*=\s*([0-9]+(?:[.,][0-9]+)?)\s*$/i
-  const layout = new Map()
-  const conteos = {}
-  const esperado = {}
-  const tiempos = []
-  for (let r = 0; r < raw.length; r++) {
-    let m = null
-    for (const c of raw[r]) { m = re.exec(String(c ?? '')); if (m) break }
-    if (!m) continue
-    const t = convertirNumero(m[1])
-    const k = claveT(t)
-    tiempos.push(t)
-    for (let i = r; i < Math.min(raw.length, r + 5); i++) {
-      if (/conc/i.test(String(raw[i][0] ?? ''))) {
-        const v = raw[i].slice(1).map(convertirNumero).find(finito)
-        if (finito(v)) esperado[k] = v
-        break
-      }
-    }
-    for (let i = r + 1, q = 0; i < Math.min(raw.length, r + 22) && q < 8; i++) {
-      const cel = raw[i]
-      const cl = cel.findIndex((x) => String(x ?? '').trim().toUpperCase() === LETRAS[q])
-      if (cl < 0) continue
-      const vals = cel.slice(cl + 1, cl + 13)
-      vals.forEach((v, j) => {
-        const p = LETRAS[q] + (j + 1)
-        if (v === '' || v === null || v === undefined) return
-        const n = typeof v === 'number' ? v : NaN
-        if (finito(n)) {
-          if (!conteos[k]) conteos[k] = {}
-          conteos[k][p] = n
-        } else {
-          const txt = String(v).trim()
-          if (txt && !layout.has(p)) layout.set(p, txt)
-        }
-      })
-      q++
-    }
-  }
-  if (!tiempos.length) throw new Error('No encontré bloques «T=…» con la placa A..H. Cada bloque empieza con una celda «T=0», «T=1», etc.')
-  return {
-    layout: [...layout].map(([Pocillo, Muestra]) => ({ Pocillo, Muestra })),
-    conteos, esperado, tiempos: [...new Set(tiempos)].sort((a, b) => a - b),
-  }
-}
-
-// ------------------------------------------------------------
-// Tabla de recuentos desde Excel: encabezados «Muestra», «Tiempo (h)», «Réplica» y columnas de dilución
-// («Sin diluir», «0», «-1», «-2», …). Devuelve filas { muestra, replica, t, c: { k: colonias } }.
-// ------------------------------------------------------------
-export function leerTablaConteos(raw) {
-  let h = -1
-  for (let r = 0; r < Math.min(raw.length, 40); r++) {
-    if (raw[r].some((x) => /^\s*(muestra|cepa|sample)\s*$/i.test(String(x ?? '')))) { h = r; break }
-  }
-  if (h < 0) throw new Error('No encontré una fila de encabezados con la columna «Muestra».')
-  const enc = raw[h].map((x) => String(x ?? '').trim())
-  const ix = (re) => enc.findIndex((x) => re.test(x))
-  const iM = ix(/^(muestra|cepa|sample)$/i), iT = ix(/^(tiempo|time|t)\b/i), iR = ix(/^(r[eé]plica|rep)/i), iV = ix(/^volumen/i)
-  const cols = []
-  enc.forEach((x, j) => {
-    const sinDil = /^(sin diluir|sd|directa?|0|10\^?0)$/i.test(x)
-    const m = /^[−-]\s*(\d+)$/.exec(x) || /^10\s*\^?\s*[−-]\s*(\d+)$/i.exec(x) || /^dil(?:uci[oó]n)?\s*[−-]?\s*(\d+)$/i.exec(x)
-    if (sinDil) cols.push([j, 0])
-    else if (m) cols.push([j, Number(m[1])])
-  })
-  if (!cols.length) throw new Error('No encontré columnas de recuento («Sin diluir», «-1», «-2», …).')
-  const filas = []
-  for (let r = h + 1; r < raw.length; r++) {
-    const f = raw[r]
-    const muestra = String(f[iM] ?? '').trim()
-    if (!muestra) continue
-    const c = {}
-    cols.forEach(([j, k]) => { const v = convertirNumero(f[j]); if (finito(v)) c[k] = v })
-    filas.push({ muestra, replica: iR >= 0 ? Number(convertirNumero(f[iR])) || 1 : 1, t: iT >= 0 ? convertirNumero(f[iT]) : 0, vol: iV >= 0 ? convertirNumero(f[iV]) : undefined, c })
-  }
-  if (!filas.length) throw new Error('La tabla no tiene filas con nombre de muestra.')
-  return { filas, nd: Math.max(...cols.map(([, k]) => k)) + 1 }
-}

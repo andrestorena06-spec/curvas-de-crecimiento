@@ -7,22 +7,20 @@ import { claveGrupoUfc, claveUfc, dilucionesUfc, serieUfc } from '../../datos/ex
 import { dixonQ } from '../../calculo/od/pipeline.js'
 import { detectarCV } from '../../calculo/comun/atipicos.js'
 import { desvio, media } from '../../calculo/comun/analisis.js'
-import { Campo, Check, Encabezado, Icono, navegarTabla, Num, Sel, Seg } from '../../ui/base.jsx'
+import { Campo, Encabezado, Icono, navegarTabla, Num, Sel, Seg } from '../../ui/base.jsx'
 import { BotonCinta, CampoCinta, Cinta, Grupo } from '../../ui/cinta.jsx'
-import { fin, nuevoId, sciCorto, tiemposDeSerie, textoTiemposSerie, siguienteReplica } from '../../comun/utils.js'
+import { fin, fx, nuevoId, sci, superindice, tiemposDeSerie, textoTiemposSerie, siguienteReplica } from '../../comun/utils.js'
 
-const SUP = { '-': '⁻', 0: '⁰', 1: '¹', 2: '²', 3: '³', 4: '⁴', 5: '⁵', 6: '⁶', 7: '⁷', 8: '⁸', 9: '⁹' }
-const sup = (t) => t.replace(/[-0-9.]/g, (c) => (c === '.' ? '·' : SUP[c]))
 // concentración relativa a la suspensión original, en base 10 (10⁻³) y como fracción (1/1000)
-export const base10 = (D) => { if (!(D > 0)) return '—'; if (D === 1) return '10⁰'; const x = -Math.log10(D); const r = Math.round(x); return `10${sup(String(Math.abs(x - r) < 1e-9 ? r : Number(x.toFixed(2))))}` }
+export const base10 = (D) => { if (!(D > 0)) return '—'; if (D === 1) return '10⁰'; const x = -Math.log10(D); const r = Math.round(x); return Math.abs(x - r) < 1e-9 ? `10${superindice(String(r))}` : '' }   // potencia de 10 solo si es exacta (con factor 5 se muestra la fracción)
 const redondo = (x) => (Math.abs(x - Math.round(x)) < 1e-9 ? Math.round(x) : Number(x.toPrecision(4)))
-export const fraccion = (D) => (!(D > 0) ? '—' : D === 1 ? '1 (sin diluir)' : `1/${redondo(D).toLocaleString('es')}`)
+export const fraccion = (D) => (!(D > 0) ? '—' : D === 1 ? '1 (sin diluir)' : `1/${String(redondo(D)).replace(/\B(?=(\d{3})+(?!\d))/g, '\u202F')}`)
 // número ordinal de la dilución (1ra, 2da, 3ra…), contando solo las columnas diluidas
 const SUF = { 1: 'ra', 2: 'da', 3: 'ra', 4: 'ta', 5: 'ta', 6: 'ta', 7: 'ma', 8: 'va', 9: 'na', 10: 'ma', 11: 'ra', 12: 'da' }
 export const ordinal = (d) => (d?.diluida ? `${d.n}${SUF[d.n] || 'a'}` : '')
-export const etqD = (d) => (!d ? '' : !d.diluida ? 'Sin diluir' : `${ordinal(d)} · ${base10(d.D)}`)
+export const etqD = (d) => (!d ? '' : !d.diluida ? 'Sin diluir' : [ordinal(d), base10(d.D) || fraccion(d.D)].join(' · '))
 
-export function Conteo({ s }) {
+export function Recuento({ s }) {
   const { exp, upd, avisar } = s
   const u = exp.ufc
   const setU = (patch) => upd((e) => ({ ufc: { ...e.ufc, ...(typeof patch === 'function' ? patch(e.ufc) : patch) } }))
@@ -57,7 +55,7 @@ export function Conteo({ s }) {
       out[k] = {
         n: reps.length, total: fs.length, sd: lg.length > 1 ? desvio(lg) : NaN, cv: vals.length > 1 ? (100 * desvio(vals)) / media(vals) : NaN,
         enRango: reps.filter((r) => r.e.estado === 'ok').length,
-        dixon: d ? { replica: reps[d.i].f.replica, texto: d.metodo === 'RSD' ? `RSD = ${d.q.toFixed(1)} % > ${d.crit} %` : `${d.metodo === 'Grubbs' ? 'G' : 'Q'} = ${d.q.toFixed(2)} > ${d.crit.toFixed(2)}` } : null,
+        dixon: d ? { replica: reps[d.i].f.replica, texto: d.metodo === 'RSD' ? `RSD = ${fx(d.q, 1)} % > ${d.crit} %` : `${d.metodo === 'Grubbs' ? 'G' : 'Q'} = ${fx(d.q, 2)} > ${fx(d.crit, 2)}` } : null,
       }
     })
     return out
@@ -116,8 +114,8 @@ export function Conteo({ s }) {
           <CampoCinta etiqueta="Contadas por réplica" tip={'Cuántas diluciones se cuentan en cada réplica\nAl cargar, Enter pasa a la dilución siguiente hasta completar esa cantidad y después sigue con la réplica siguiente, empezando otra vez en la primera dilución.'}><Num value={serie.nDil} onChange={(v) => setSerie({ ...serie, nDil: v })} ancho={56} /></CampoCinta>
           <BotonCinta icono="mas" texto="Crear filas" onClick={crearSerie} tip={`Crea filas vacías para ${serie.muestra}: ${serie.reps} réplicas en t = ${textoTiempos()} h`} />
         </Grupo>
-        <Grupo titulo="Conteos">
-          <BotonCinta icono="borrar" texto="Borrar todos" peligro deshabilitado={!u.filas.length} onClick={() => { if (window.confirm('Se borran todos los conteos. ¿Continuar?')) setU({ filas: [] }) }} />
+        <Grupo titulo="Recuentos">
+          <BotonCinta icono="borrar" texto="Borrar todos" peligro deshabilitado={!u.filas.length} onClick={() => { if (window.confirm('Se borran todos los recuentos. ¿Continuar?')) setU({ filas: [] }) }} />
         </Grupo>
         <Grupo titulo="Siembra">
           <CampoCinta etiqueta="Vol. sembrado (µL)" tip="Volumen de la dilución que se siembra en cada placa o gota. Si una fila usó otro, se escribe en su columna."><Num value={u.vol} onChange={(v) => setU({ vol: v })} ancho={64} /></CampoCinta>
@@ -131,16 +129,16 @@ export function Conteo({ s }) {
           <BotonCinta simbolo="≈" texto="Usar estimados" activo={u.estimados} onClick={() => setU({ estimados: !u.estimados })} tip={'Usar estimados\nSi ninguna dilución es contable, se estima con la más cercana al rango, se marca y entra en las medias.'} />
         </Grupo>
       </Cinta>
-      <Encabezado titulo="Cargar conteos" sub="Colonias por cepa, réplica, tiempo y dilución."></Encabezado>
+      <Encabezado titulo="Cargar recuentos" sub="Colonias por cepa, réplica, tiempo y dilución."></Encabezado>
       <div>
         <div style={{ minWidth: 0 }}>
           <div className="tarjeta" onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); agregar() } }}>
-            <h2>Nuevo conteo</h2>
+            <h2>Nuevo recuento</h2>
             <div className="fila fin">
               <Campo label="1 · Cepa"><Sel value={f.muestra} onChange={(v) => setF({ ...f, muestra: v })} opciones={exp.cepas.map((c) => [c, c])} style={{ minWidth: 160 }} /></Campo>
               <Campo label="2 · Réplica"><Num value={f.replica} onChange={(v) => setF({ ...f, replica: v })} ancho={70} /></Campo>
               <Campo label="3 · Tiempo (h)"><Num value={f.t} onChange={(v) => setF({ ...f, t: v })} ancho={80} /></Campo>
-              <Campo label="4 · Dilución"><Sel value={String(f.k)} onChange={(v) => setF({ ...f, k: Number(v), k0: Number(v), paso: 0 })} opciones={ks.map((k) => [String(k), `${etqD(serieD[k])}  ·  ${fraccion(serieD[k]?.D)}`])} /></Campo>
+              <Campo label="4 · Dilución"><Sel value={String(f.k)} onChange={(v) => setF({ ...f, k: Number(v), k0: Number(v), paso: 0 })} opciones={ks.map((k) => [String(k), `${etqD(serieD[k])}${base10(serieD[k]?.D) ? `  ·  ${fraccion(serieD[k]?.D)}` : ""}`])} /></Campo>
               <Campo label="5 · Colonias">
                 <input ref={refN} inputMode="numeric" style={{ width: 90, background: color(Number(f.n)) }} value={f.n} onChange={(e) => setF({ ...f, n: e.target.value.replace(/\D/g, '') })} placeholder="n" />
               </Campo>
@@ -151,15 +149,13 @@ export function Conteo({ s }) {
           </div>
           <div className="tarjeta">
             <div className="fila" style={{ marginBottom: 12 }}>
-              <h2 style={{ margin: 0 }}>Conteos ({u.filas.length} réplicas)</h2>
-              <span className="espacio" />
-              <span className="ayuda">Para crear filas vacías elegí cepa, réplicas, cantidad de tiempos e intervalo en la cinta.</span>
+              <h2 style={{ margin: 0 }} data-tip="Para crear filas vacías: cepa, réplicas, cantidad de tiempos e intervalo, en el grupo «Crear filas vacías» de la cinta">Recuentos ({u.filas.length} réplicas)</h2>
             </div>
             {filas.length > 0 && <p className="ayuda" style={{ margin: '-4px 0 10px' }}>Una dilución por cepa y tiempo (recuadrada); las demás no entran en el cálculo.</p>}
-            {!filas.length ? <p className="ayuda">Todavía no hay conteos.</p> : (
+            {!filas.length ? <p className="ayuda">Todavía no hay recuentos.</p> : (
               <div className="tabla-scroll">
                 <table className="tabla trabajo" ref={planilla} onKeyDown={navegarTabla}>
-                  <thead><tr><th>Cepa</th><th className="num">Réplica</th><th className="num">T (h)</th><th className="num">Vol. µL</th><th data-tip={'Dilución usada para calcular las UFC/mL (la misma para todas las réplicas de la cepa en ese tiempo)\nAuto: la que tiene más réplicas dentro del rango contable. Podés elegir otra acá o con clic derecho sobre un conteo.\nLas demás diluciones de la réplica no entran en el cálculo.'}>Dilución usada</th><th data-tip={'Réplicas con la dilución usada\nDE: desviación estándar de log₁₀ UFC/mL entre las réplicas de la cepa en ese tiempo.\n⚠ Dixon: esta réplica quedaría excluida por el test (Q de Dixon, o Grubbs con más de 10).'}>DE · Dixon</th>{ks.map((k) => <th key={k} className="num" data-tip={fraccion(serieD[k]?.D)}>{etqD(serieD[k])}</th>)}<th className="num">UFC/mL</th><th className="num">log₁₀ UFC/mL</th><th>Estado</th><th /></tr></thead>
+                  <thead><tr><th>Cepa</th><th className="num">Réplica</th><th className="num">t (h)</th><th className="num">Vol. µL</th><th data-tip={'Dilución usada para calcular las UFC/mL (la misma para todas las réplicas de la cepa en ese tiempo)\nAuto: la que tiene más réplicas dentro del rango contable. Podés elegir otra acá o con clic derecho sobre un recuento.\nLas demás diluciones de la réplica no entran en el cálculo.'}>Dilución usada</th><th data-tip={'Réplicas con la dilución usada\nDE: desviación estándar de log₁₀ UFC/mL entre las réplicas de la cepa en ese tiempo.\n⚠: esta réplica quedaría excluida por el test elegido en la Revisión (Dixon, Grubbs o RSD).'}>DE · {{ q: 'Dixon', grubbs: 'Grubbs', cv: 'RSD' }[exp.aj?.ufc_atip_metodo] || 'Dixon'}</th>{ks.map((k) => <th key={k} className="num" data-tip={fraccion(serieD[k]?.D)}>{etqD(serieD[k])}</th>)}<th className="num">UFC/mL</th><th className="num">log₁₀ UFC/mL</th><th>Estado</th><th /></tr></thead>
                   <tbody>{filas.map((x) => {
                     const p = par(x)
                     const e = estimarUfc(x.c, p)
@@ -180,8 +176,8 @@ export function Conteo({ s }) {
                           return <td data-tip={resumenCand(c) + (c.dixon ? `\n${c.dixon.texto}` : '')}>{sale ? <span className="aviso-texto">⚠ {nomTest}</span> : <small className="ayuda">DE {dec(c.sd)} log</small>}</td> })()}
                         {ks.map((k) => <td key={k} className={`num celda-conteo ${e.usados[0] === k ? 'usada' : fin(x.c[k]) ? 'no-usada' : ''}`}
                           onContextMenu={(ev) => { if (!fin(x.c[k])) return; ev.preventDefault(); const g = claveGrupoUfc(x); setDilGrupo(g, dilG[g]?.manual && dilG[g].k === k ? undefined : k) }} style={{ background: color(x.c[k]) }} data-tip={e.usados[0] === k ? `Dilución usada para las UFC/mL de esta cepa en este tiempo${e.manual ? ' (elegida a mano)' : ' (sugerida)'}` : fin(x.c[k]) ? 'No entra en el cálculo.\nClic derecho para usar esta dilución.' : undefined}><Num value={x.c[k] ?? ''} onChange={(v) => setC(x.id, k, v)} ancho={60} /></td>)}
-                        <td className="num"><Valor f={fRep}><b>{fin(e.ufc) ? sciCorto(e.ufc) : e.estado === 'cero' ? `< ${sciCorto(e.lim)}` : ''}</b></Valor></td>
-                        <td className="num">{fin(e.ufc) && e.ufc > 0 ? Math.log10(e.ufc).toFixed(2) : ''}</td>
+                        <td className="num"><Valor f={fRep}><b>{fin(e.ufc) ? sci(e.ufc) : e.estado === 'cero' ? `< ${sci(e.lim)}` : ''}</b></Valor></td>
+                        <td className="num">{fin(e.ufc) && e.ufc > 0 ? fx(Math.log10(e.ufc), 2) : ''}</td>
                         <td><small>{Object.keys(x.c).length ? (fuera ? 'Excluida' : textoEstado(e.estado)) : ''}</small></td>
                         <td><button className="fantasma icono" aria-label="Quitar" onClick={() => setU((uu) => ({ filas: uu.filas.filter((y) => y.id !== x.id) }))}><Icono n="borrar" size={15} /></button></td>
                       </tr>
@@ -213,9 +209,9 @@ export function Conteo({ s }) {
                       <td className="num"><Num value={u.pasos?.[d.k]?.diluyente ?? ''} placeholder={String(u.diluyente)} onChange={(v) => setPaso(d.k, 'diluyente', v)} ancho={70} /></td>
                       <td className="num">{fin(d.f) ? `×${redondo(d.f)}` : '—'}</td>
                     </>) : <td colSpan={3} className="ayuda">Suspensión de partida (sin diluir)</td>}
-                    <td className="num">{fin(d.D) ? `1:${redondo(d.D).toLocaleString('es')}` : '—'}</td>
+                    <td className="num">{fin(d.D) ? `1:${String(redondo(d.D)).replace(/\B(?=(\d{3})+(?!\d))/g, '\u202F')}` : '—'}</td>
                     <td className="num">{fraccion(d.D)}</td>
-                    <td className="num"><b>{base10(d.D)}</b></td>
+                    <td className="num"><b>{base10(d.D) || '–'}</b></td>
                     <td>{d.propio && <button className="fantasma icono" aria-label="Volver a los volúmenes generales" data-tip="Volver a los volúmenes generales" onClick={() => setU((uu) => { const ps = { ...(uu.pasos || {}) }; delete ps[d.k]; return { pasos: ps } })}><Icono n="refrescar" size={14} /></button>}</td>
                   </tr>
                 ))}</tbody>

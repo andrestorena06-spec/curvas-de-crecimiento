@@ -11,15 +11,15 @@ import { TablaMediaTiempo } from '../../ui/tablaMedia.jsx'
 import { curvaUfcDe, verUfc } from './CalidadUfc.jsx'
 import { zonasVentana } from '../od/FasesCepa.jsx'
 import { useTema, colorReplica } from '../../estilo/tema.js'
-import { Encabezado, Icono, Num, Vacio } from '../../ui/base.jsx'
-import { BotonCinta, Cajon, CampoCinta, Cinta, Grupo, OpcionesCinta } from '../../ui/cinta.jsx'
+import { Encabezado, Vacio } from '../../ui/base.jsx'
+import { BotonCinta, Cajon, Cinta, Grupo, OpcionesCinta } from '../../ui/cinta.jsx'
 import { PanelPersonalizar } from '../../ui/graficos/personalizar.jsx'
 import { GrupoMostrar, conEtiquetas, textoMostrar, useMostrar } from '../../ui/mostrar.jsx'
 import { SelectorCepas, cepasOcultas } from '../../ui/cepas.jsx'
 import { Grafico } from '../../ui/graficos/grafico.jsx'
 import { Valor } from '../../fichas/FichaCalculo.jsx'
 import { fichaPrediccionUfc, fichaUfcTiempo } from '../../fichas/index.js'
-import { fs, fx, sciCorto } from '../../comun/utils.js'
+import { fx, sci } from '../../comun/utils.js'
 import { GrupoModeloUfc, SeccionUfc } from './ParamUfc.jsx'
 
 // ficha del valor de una cepa en un tiempo, con las réplicas que no entran y las estimadas
@@ -43,14 +43,14 @@ export function CurvaUfc({ s }) {
   const [escala, setEscala] = useOpcion('curvaUfc.escala', 'log10')
   const [fases, setFases] = useOpcion('curvaUfc.fases', false)   // sombrea lag / exponencial / estacionaria (con una sola cepa visible)
   const tipoErr = verUfc(exp.aj).error
-  // Mostrar (el mismo grupo en todos los gráficos): puntos = valor de cada tiempo, réplicas = cada conteo
+  // Mostrar (el mismo grupo en todos los gráficos): puntos = valor de cada tiempo, réplicas = cada recuento
   const [mo, setMo] = useMostrar('curvaUfc', { puntos: true, replicas: false })
   const conCurva = curvaUfcDe(exp.aj) !== 'no'
   const [pers, setPers] = useState(null)
   const modelo = modeloUfc(exp.aj)
   const nmaxF = nmaxFijado(exp.aj)
   const etqErr = etiquetaErrorUfc(null, tipoErr)
-  if (!ufcRes?.hay) return <div className="pagina"><Encabezado titulo="Curva UFC vs t" /><Vacio titulo="Todavía no hay conteos">Cargá las colonias en «UFC › Cargar datos».</Vacio></div>
+  if (!ufcRes?.hay) return <div className="pagina"><Encabezado titulo="Curva UFC vs t" /><Vacio titulo="Todavía no hay recuentos">Cargá las colonias en «UFC › Cargar datos».</Vacio></div>
   const res = ufcRes.res.filter((r) => finito(r.log10))
   const todas = [...new Set(res.map((r) => r.Muestra))]
   const muestras = todas.filter((m) => !cepasOcultas(exp).includes(m))
@@ -63,15 +63,15 @@ export function CurvaUfc({ s }) {
     data: res.filter((r) => r.Muestra === m).sort((a, b) => a.T_h - b.T_h).map((r) => {
       const e = errorUfc(r, lin ? 'lineal' : 'log10', tipoErr)
       const k = lin ? 10 ** pot : 1
-      const valor = textoMostrar(mo, lin ? sciCorto(e.m) : fx(e.m, 2), errorTextoUfc(e, lin))
+      const valor = textoMostrar(mo, lin ? sci(e.m) : fx(e.m, 2), errorTextoUfc(e, lin))
       return { x: r.T_h, y: e.m / k, lo: e.lo / k, hi: e.hi / k, valor, key: `${m}|${r.T_h}`,
         tip: [`${m} · T = ${r.T_h} h`, ...tipValorUfc(r, null, tipoErr), 'Clic: cómo se calculó'].join('\n') }
     }),
   }))
-  // réplicas: cada conteo como un punto chico, para ver cuánto se aparta del valor del tiempo
+  // réplicas: cada recuento como un punto chico, para ver cuánto se aparta del valor del tiempo
   if (mo.replicas) muestras.forEach((m) => {
     series.push({ id: 'rep' + m, cepa: m, nombre: '', color: s.colores[m], linea: false, puntos: true, radio: 3, opacidad: 0.75,
-      data: ufcRes.reps.filter((r) => r.Muestra === m && finito(r.log10) && !ufcRes.fuera.has(`${r.Muestra}|${r.T_h}|${r.Replica}`)).map((r) => ({ x: r.T_h, y: lin ? r.UFC_mL / 10 ** pot : r.log10, tip: `${m} · réplica ${r.Replica} · T = ${r.T_h} h\nUFC/mL = ${sciCorto(r.UFC_mL)} (log₁₀ ${fx(r.log10, 2)})` })) })
+      data: ufcRes.reps.filter((r) => r.Muestra === m && finito(r.log10) && !ufcRes.fuera.has(`${r.Muestra}|${r.T_h}|${r.Replica}`)).map((r) => ({ x: r.T_h, y: lin ? r.UFC_mL / 10 ** pot : r.log10, tip: `${m} · réplica ${r.Replica} · T = ${r.T_h} h\nUFC/mL = ${sci(r.UFC_mL)} (log₁₀ ${fx(r.log10, 2)})` })) })
   })
   // curva del modelo elegido
   const avisosSuave = []
@@ -82,7 +82,7 @@ export function CurvaUfc({ s }) {
   const yv = (y) => (lin ? 10 ** y / 10 ** pot : y)
   preds.forEach(({ m, p }) => {
     if (!p.ok || !conCurva) return
-    const tramo = (a, b) => p.puntos.filter((q) => q.x >= a - 1e-9 && q.x <= b + 1e-9).map((q) => ({ x: q.x, y: yv(q.y), tip: `${m} · ${MODELOS_UFC[modelo]}\nt = ${fx(q.x, 2)} h\n${q.x > p.c.t1 ? 'predicción: ' : ''}log₁₀ UFC/mL = ${fx(q.y, 2)} (${sciCorto(10 ** q.y)})` }))
+    const tramo = (a, b) => p.puntos.filter((q) => q.x >= a - 1e-9 && q.x <= b + 1e-9).map((q) => ({ x: q.x, y: yv(q.y), tip: `${m} · ${MODELOS_UFC[modelo]}\nt = ${fx(q.x, 2)} h\n${q.x > p.c.t1 ? 'predicción: ' : ''}log₁₀ UFC/mL = ${fx(q.y, 2)} (${sci(10 ** q.y)})` }))
     series.push({ id: 'pa' + m, cepa: m, nombre: `${m}: ${MODELOS_UFC[modelo]}`, color: s.colores[m], ancho: 2, data: tramo(p.c.t0, p.c.t1) })
     series.push({ id: 'pp' + m, cepa: m, nombre: `${m}: predicción`, color: s.colores[m], ancho: 2, dash: '7 5', data: tramo(p.c.t1, p.hasta) })
   })
@@ -143,7 +143,7 @@ export function CurvaUfc({ s }) {
             <tbody>{preds.map(({ m, p }) => (
               <tr key={m}><td><i className="punto" style={{ background: s.colores[m], marginRight: 6 }} /><b>{m}</b></td>
                 {p.ok ? <>
-                  <td className="num"><Valor f={() => fichaPrediccionUfc(p, { nombre: m })}><b>{fx(p.yHasta, 2)}</b> <small className="ayuda">({sciCorto(10 ** p.yHasta)})</small></Valor></td>
+                  <td className="num"><Valor f={() => fichaPrediccionUfc(p, { nombre: m })}><b>{fx(p.yHasta, 2)}</b> <small className="ayuda">({sci(10 ** p.yHasta)})</small></Valor></td>
                   <td className="num"><Valor f={() => fichaPrediccionUfc(p, { nombre: m })}>{finito(p.tMeseta) ? fx(p.tMeseta, 1) : '–'}</Valor></td>
                   {pred.objetivo !== '' && <td className="num"><Valor f={() => fichaPrediccionUfc(p, { nombre: m })}>{finito(p.tObjetivo) ? fx(p.tObjetivo, 1) : 'no llega'}</Valor></td>}
                   <td className="num">{fx(p.c.yEnd, 2)}{p.c.ymaxFijo ? <small className="ayuda"> (fijado)</small> : null}</td>
@@ -154,7 +154,7 @@ export function CurvaUfc({ s }) {
           <p className="ayuda" style={{ marginTop: 6 }}>Continua: ajuste en el rango medido · trazos: extrapolación del modelo (depende de N máx).</p>
         </div>
       )}
-      <TablaMediaTiempo titulo="UFC/mL por cepa y tiempo" unidad="UFC/mL" etqErr={etqErr} fmt={(x) => sciCorto(x)}
+      <TablaMediaTiempo titulo="UFC/mL por cepa y tiempo" unidad="UFC/mL" etqErr={etqErr} fmt={(x) => sci(x)}
         filas={res.filter((r) => muestras.includes(r.Muestra)).map((r) => { const est = estadisticaUfc(r), e = errorUfc(r, 'lineal', tipoErr); return { clave: `${r.Muestra}|${r.T_h}`, cepa: r.Muestra, color: s.colores[r.Muestra], t: r.T_h, n: est.n, m: est.m, e: e.err } })}
         ficha={(f, foco) => fichaTiempoUfc(ufcRes, exp.aj, f.cepa, f.t, foco)}
         nota="Para cada réplica UFC/mL = C · D / V; el valor de cada tiempo es la media aritmética de las réplicas, con su error y su rango; en log₁₀, el log₁₀ de esa media y de los extremos del rango (la escala del gráfico no cambia las cuentas). Las réplicas con 0 colonias cuentan como 0. Con menos de 3 réplicas no hay EEM ni IC 95 %." />

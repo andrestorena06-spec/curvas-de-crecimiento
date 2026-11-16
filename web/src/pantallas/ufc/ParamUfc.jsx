@@ -4,22 +4,13 @@
 // calibración (ajusteCepaUfc).
 // ============================================================
 import { finito } from '../../calculo/comun/analisis.js'
-import { MODELOS_UFC, NOMBRE_VARIANTE, ajusteCepaUfc, crecimientoUfc, mcurvUfc, modeloUfc, nmaxFijado, predDe, puntosUfc } from '../../calculo/ufc/index.js'
-import { Icono, Num } from '../../ui/base.jsx'
+import { MODELOS_UFC, NOMBRE_VARIANTE, ajusteCepaUfc, crecimientoPorCepa, mcurvUfc, modeloUfc, nmaxFijado, predDe, puntosUfc } from '../../calculo/ufc/index.js'
 import { GrupoModelo } from '../../ui/modeloCinta.jsx'
 import { EcuacionModelo } from '../../ui/ecuacion.jsx'
 import { Valor } from '../../fichas/FichaCalculo.jsx'
 import { fichaAumentoUfc, fichaModeloUfc } from '../../fichas/index.js'
-import { fs, fx } from '../../comun/utils.js'
+import { conError, fs, fx } from '../../comun/utils.js'
 
-export const crecimientoPorCepa = (ufcRes, aj) => [...new Set(ufcRes.res.map((r) => r.Muestra))].map((m) => ({ Muestra: m, c: crecimientoUfc(ufcRes, m, aj) }))
-// Sin curva / Linealizar log₁₀ / Baranyi y Roberts: el mismo grupo en Curva OD y en Curva UFC
-export const OPCIONES_MODELO_UFC = [
-  ['no', 'Sin curva', '·', null, 'Solo los puntos, sin la curva del modelo'],
-  ['lineal', 'Linealizar log₁₀', '⟋', null, 'Linealizar log₁₀: recta de ln N contra t en la fase exponencial (la ventana de mayor pendiente), como μmax'],
-  ['baranyi', 'Baranyi y Roberts', '∫', null, 'Baranyi y Roberts: lag, fase exponencial y asíntota, ajustado a todos los puntos (4 o más tiempos)'],
-  ['huang', 'Huang', 'H', null, 'Huang (2008): lag, fase exponencial y asíntota con una transición más suave; el lag λ es un parámetro directo del ajuste (4 o más tiempos)'],
-]
 
 // «Modelo» de las UFC (el componente común de ui/modeloCinta.jsx con las claves de los recuentos): Curva UFC, Revisión y calibración
 export function GrupoModeloUfc({ s, sinCurva = true, prediccion = true, botonFases = null }) {
@@ -50,7 +41,8 @@ export function SeccionUfc({ s, muestras }) {
   const f = (m, c, foco) => () => fichaModeloUfc(c, puntosUfc(ufcRes, m, aj), { foco, nombre: m, color: s.colores[m] })
   const fa = (m, c, foco) => () => fichaAumentoUfc(c, { foco, nombre: m })
   // valor ± error estándar (el error en chico, como en μ); sin error calculable, solo el valor
-  const pm = (txt, ee, d = 2) => <>{txt}{finito(ee) && ee > 0 && <small className="ayuda"> ± {fs(ee, d)}</small>}</>
+  // valor y error con los mismos decimales (conError, comun/utils.js)
+  const pm = (v, e, cifras = 4) => { const q = conError(v, e, 2, cifras); return <>{q.v}{q.e && <small className="ayuda"> ± {q.e}</small>}</> }
   const celda = (m, c, foco, txt, tip) => <td className="num" data-tip={tip}><Valor f={f(m, c, foco)}>{txt}</Valor></td>
   const av = crec.flatMap(({ Muestra, c }) => [...(c.ok ? c.avisos || [] : []).map((a) => [Muestra, a]), ...(c.avisosPuntos || []).map((a) => [Muestra, `${a}: no entra al ajuste de crecimiento.`])])
   return (
@@ -63,11 +55,11 @@ export function SeccionUfc({ s, muestras }) {
         <tbody>{crec.map(({ Muestra: m, c }) => (
           <tr key={m}><td><i className="punto" style={{ background: s.colores[m], marginRight: 6 }} /><b>{m}</b>{c.ok && c.variante && c.variante !== 'completo' && <small className="ayuda" data-tip={(c.notaVariante ? c.notaVariante + '\n' : '') + 'Variante del modelo elegida según los datos, como DMFit:\nsin lag si el lag del modelo completo da 0; sin meseta si los datos no llegan a la fase estacionaria'}> · {NOMBRE_VARIANTE[c.variante]}</small>}</td>
             {c.ok ? <>
-              {celda(m, c, 'rate', pm(fx(c.rate, 3), c.ee_mu / Math.LN10))}{celda(m, c, 'mu', pm(fs(c.mu, 4), c.ee_mu))}{celda(m, c, 'td', pm(fs(c.td_h, 4), c.ee_td))}{celda(m, c, 'lag', finito(c.lag_h) ? <>{fs(c.lag_h, 3)}{finito(c.ee_lag) && c.ee_lag > 0 && <small className="ayuda"> ± {fs(c.ee_lag, 2)}</small>}{c.lagFijo && <small className="ayuda"> (fijo)</small>}</> : '–')}
-              {celda(m, c, 'y0', pm(fx(c.y0, 2), c.ee_y0))}{celda(m, c, 'yEnd', finito(c.yEnd) ? pm(fx(c.yEnd, 2), c.ee_ymax) : c.sinAsintota ? 'sin meseta' : '–', c.sinAsintota ? 'Los recuentos no llegan a la fase estacionaria: la asíntota no se puede estimar.\nFijá N máx (log₁₀) en la cinta o usá el modelo Linealizar log₁₀.' : undefined)}
+              {celda(m, c, 'rate', pm(c.rate, c.ee_mu / Math.LN10, 3))}{celda(m, c, 'mu', pm(c.mu, c.ee_mu, 4))}{celda(m, c, 'td', pm(c.td_h, c.ee_td, 4))}{celda(m, c, 'lag', finito(c.lag_h) ? <>{pm(c.lag_h, c.ee_lag, 3)}{c.lagFijo && <small className="ayuda"> (fijo)</small>}</> : '–')}
+              {celda(m, c, 'y0', pm(c.y0, c.ee_y0, 3))}{celda(m, c, 'yEnd', finito(c.yEnd) ? pm(c.yEnd, c.ee_ymax, 3) : c.sinAsintota ? 'sin meseta' : '–', c.sinAsintota ? 'Los recuentos no llegan a la fase estacionaria: la asíntota no se puede estimar.\nFijá N máx (log₁₀) en la cinta o usá el modelo Linealizar log₁₀.' : undefined)}
               {celda(m, c, 'r2', fx(c.r2, 3))}<td className="num">{fx(c.r2adj, 3)}</td>{celda(m, c, 'se', fx(c.se, 3))}<td className="num">{c.n}</td>
-              <td className="num" style={{ color: c.gl <= 1 ? 'var(--aviso)' : undefined }}><Valor f={f(m, c, 'gl')}>{finito(c.gl) ? c.gl : '–'}</Valor>{(c.avisos || []).length > 0 && <span className="aviso-texto" data-tip={c.avisos.join('\n\n')}> ⚠</span>}</td>
-              <td className="num"><Valor f={fa(m, c, 'aumento')}>{pm(fx(c.crecimiento_log10, 2), c.aumentoDe === 'modelo' ? c.ee_aumento : NaN)}</Valor></td><td className="num"><Valor f={fa(m, c, 'gen')}>{pm(fx(c.generaciones, 2), c.aumentoDe === 'modelo' ? c.ee_generaciones : NaN)}</Valor></td>
+              <td className="num" style={{ color: c.gl <= 3 ? 'var(--aviso)' : undefined }}><Valor f={f(m, c, 'gl')}>{finito(c.gl) ? c.gl : '–'}</Valor>{(c.avisos || []).length > 0 && <span className="aviso-texto" data-tip={c.avisos.join('\n\n')}> ⚠</span>}</td>
+              <td className="num"><Valor f={fa(m, c, 'aumento')}>{pm(c.crecimiento_log10, c.aumentoDe === 'modelo' ? c.ee_aumento : NaN, 3)}</Valor></td><td className="num"><Valor f={fa(m, c, 'gen')}>{pm(c.generaciones, c.aumentoDe === 'modelo' ? c.ee_generaciones : NaN, 3)}</Valor></td>
             </> : <td colSpan={13} className="ayuda">{c.motivo}</td>}
           </tr>
         ))}</tbody>

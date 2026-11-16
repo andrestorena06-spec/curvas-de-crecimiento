@@ -12,7 +12,6 @@ export const N = (c) => h('mn', null, c)                              // número
 export const O = (c) => h('mo', null, c)                              // operador
 export const sub = (b, s) => h('msub', null, R(b), R(s))
 export const sup = (b, s) => h('msup', null, R(b), R(s))
-export const subsup = (b, s, p) => h('msubsup', null, R(b), R(s), R(p))
 export const fr = (a, b) => h('mfrac', null, R(a), R(b))
 export const raiz = (...x) => h('msqrt', null, ...x)
 const delim = (a, z) => (...x) => R(h('mo', { stretchy: 'true' }, a), ...x, h('mo', { stretchy: 'true' }, z))

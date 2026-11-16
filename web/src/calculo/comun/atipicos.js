@@ -4,7 +4,7 @@
 // y necesitan al menos 3 pocillos.
 // ============================================================
 import { desvio, finito, media } from './analisis.js'
-import { tCuantil } from '../../comun/utils.js'
+import { fx, tCuantil } from '../../comun/utils.js'
 
 export const METODOS_ATIPICOS = {
   q: 'Test Q de Dixon (3 a 10; con más, Grubbs)',
@@ -78,9 +78,9 @@ export function detectar(x, { metodo = 'q', conf = 95, cvMax = 20 } = {}) {
   const d = m === 'grubbs' ? detectarGrubbs(x, conf) : m === 'cv' ? detectarCV(x, cvMax) : detectarQ(x, conf)
   if (d.idx === null) return d
   d.texto = (m !== metodo ? 'Más de 10 pocillos, se usó Grubbs. ' : '') + (m === 'grubbs'
-    ? `Test de Grubbs (extremo ${d.lado}): G = ${d.stat.toFixed(3)} > crítico ${d.crit.toFixed(3)} (n = ${d.n}, confianza ${conf} %)`
+    ? `Test de Grubbs (extremo ${d.lado}): G = ${fx(d.stat, 3)} > crítico ${fx(d.crit, 3)} (n = ${d.n}, confianza ${conf} %)`
     : m === 'cv'
-      ? `CV del grupo = ${d.stat.toFixed(1)} % > límite ${cvMax} % (pocillo más alejado de la media; sin él, CV = ${d.cvSin.toFixed(1)} %)`
-      : `Test Q de Dixon (extremo ${d.lado}): Q = ${d.stat.toFixed(3)} > crítico ${d.crit.toFixed(3)} (n = ${d.n}, confianza ${conf} %)`)
+      ? `CV del grupo = ${fx(d.stat, 1)} % > límite ${cvMax} % (pocillo más alejado de la media; sin él, CV = ${fx(d.cvSin, 1)} %)`
+      : `Test Q de Dixon (extremo ${d.lado}): Q = ${fx(d.stat, 3)} > crítico ${fx(d.crit, 3)} (n = ${d.n}, confianza ${conf} %)`)
   return d
 }

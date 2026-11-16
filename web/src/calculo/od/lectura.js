@@ -4,9 +4,8 @@
 // ============================================================
 
 import { leerHojasLibro } from '../../datos/libro.js'
+import { LETRAS, pocillos96 } from '../../comun/utils.js'
 
-export const LETRAS = 'ABCDEFGH'.split('')
-export const pocillos96 = () => LETRAS.flatMap((f) => Array.from({ length: 12 }, (_, i) => f + (i + 1)))
 const VALIDOS = new Set(pocillos96())
 
 export function convertirNumero(x) {
@@ -14,38 +13,6 @@ export function convertirNumero(x) {
   if (x === null || x === undefined) return NaN
   const s = String(x).trim().replace(',', '.')
   return s === '' ? NaN : Number(s)
-}
-
-// ---------- CSV ----------
-export function parsearCSV(texto) {
-  const limpio = texto.replace(/^﻿/, '')
-  const muestra = limpio.split(/\r?\n/).slice(0, 30)
-  const cuenta = [';', '\t', ','].map((s) => muestra.reduce((a, l) => a + (l.split(s).length - 1), 0))
-  const max = Math.max(...cuenta)
-  const sep = max === 0 ? ',' : [';', '\t', ','][cuenta.indexOf(max)]
-  const filas = []
-  let fila = [], campo = '', comillas = false
-  for (let i = 0; i < limpio.length; i++) {
-    const c = limpio[i]
-    if (comillas) {
-      if (c === '"') { if (limpio[i + 1] === '"') { campo += '"'; i++ } else comillas = false } else campo += c
-    } else if (c === '"') comillas = true
-    else if (c === sep) { fila.push(campo.trim()); campo = '' }
-    else if (c === '\n') { fila.push(campo.trim()); filas.push(fila); fila = []; campo = '' }
-    else if (c !== '\r') campo += c
-  }
-  if (campo !== '' || fila.length) { fila.push(campo.trim()); filas.push(fila) }
-  const ancho = Math.max(...filas.map((f) => f.length), 1)
-  return filas.map((f) => Array.from({ length: ancho }, (_, j) => f[j] ?? ''))
-}
-
-async function decodificar(file) {
-  const buf = await file.arrayBuffer()
-  try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(buf)
-  } catch {
-    return new TextDecoder('windows-1252').decode(buf)
-  }
 }
 
 // ---------- Excel / LibreOffice ----------
@@ -91,7 +58,7 @@ export function tiempoASegundos(x, encabezado = '', unidad = 'auto') {
 
 const esPoc = (x) => /^[A-Ha-h]0*([1-9]|1[0-2])$/.test(String(x ?? '').trim())
 const normPoc = (x) => String(x).trim().toUpperCase().replace(/^([A-H])0+([1-9])/, '$1$2')
-const r3 = (t) => Math.round(t * 1000) / 1000
+export const r3 = (t) => Math.round(t * 1000) / 1000
 
 // Arma {tiempos, pocillos:{A1:[y...]}} con los valores alineados a los tiempos (NaN = sin dato)
 function armar(trios) {

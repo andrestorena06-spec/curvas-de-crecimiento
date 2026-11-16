@@ -1,4 +1,4 @@
-import { ERRORES_UFC, MODELOS_UFC, ajusteCepaUfc, centroUfc, errorTextoUfc, errorUfc, etiquetaErrorUfc, metodoCurvaUfc, tipValorUfc, tramoUfcRige } from '../../calculo/ufc/index.js'
+import { ERRORES_UFC, centroUfc, errorTextoUfc, errorUfc, etiquetaErrorUfc, metodoCurvaUfc, tipValorUfc, tramoUfcRige } from '../../calculo/ufc/index.js'
 import { GrupoModeloFasesUfc } from './ParamUfc.jsx'
 import { Grafico } from '../../ui/graficos/grafico.jsx'
 import { useTema } from '../../estilo/tema.js'
@@ -11,13 +11,11 @@ import { useMemo, useState } from 'react'
 import { Valor } from '../../fichas/FichaCalculo.jsx'
 import { fichaAtipico, fichaUfcReplica } from '../../fichas/index.js'
 import { finito, media } from '../../calculo/comun/analisis.js'
-import { METODOS_ATIPICOS } from '../../calculo/comun/atipicos.js'
-import { Encabezado, Vacio, Num } from '../../ui/base.jsx'
-import { BotonCinta, Cajon, CampoCinta, Cinta, Grupo, OpcionesCinta } from '../../ui/cinta.jsx'
+import { Encabezado, Vacio } from '../../ui/base.jsx'
+import { BotonCinta, Cajon, Cinta, Grupo } from '../../ui/cinta.jsx'
 import { PanelPersonalizar } from '../../ui/graficos/personalizar.jsx'
-import { GraficoDispersion } from '../../ui/graficos/dispersion.jsx'
 import { SelectorCepas, cepasOcultas } from '../../ui/cepas.jsx'
-import { fx, sciCorto } from '../../comun/utils.js'
+import { fx, sci } from '../../comun/utils.js'
 
 const CHIP = { ok: 'ok', bajo: 'aviso', alto: 'aviso', cero: '', incontable: 'peligro', sin_datos: '' }
 
@@ -42,9 +40,9 @@ export function CalidadUfc({ s }) {
     })
     return [...g.values()].sort((a, b) => (a.Muestra < b.Muestra ? -1 : a.Muestra > b.Muestra ? 1 : a.T_h - b.T_h))
   }, [ufcRes])
-  // Mostrar (el mismo grupo en todos los gráficos): réplicas = cada conteo, puntos = el valor de cada tiempo (la raya)
+  // Mostrar (el mismo grupo en todos los gráficos): réplicas = cada recuento, puntos = el valor de cada tiempo (la raya)
   const [mo, setMo] = useMostrar('calidadUfc', { puntos: true, replicas: true })
-  if (!ufcRes?.hay) return <div className="pagina"><Encabezado titulo="Revisión de los recuentos" /><Vacio titulo="Todavía no hay conteos" accion={<button className="primario" onClick={() => s.irA('conteo')}>Cargar conteos</button>}>Cargá las colonias contadas.</Vacio></div>
+  if (!ufcRes?.hay) return <div className="pagina"><Encabezado titulo="Revisión de los recuentos" /><Vacio titulo="Todavía no hay recuentos" accion={<button className="primario" onClick={() => s.irA('conteo')}>Cargar recuentos</button>}>Cargá las colonias contadas.</Vacio></div>
 
   const clave = (r) => `${r.Muestra}|${r.T_h}|${r.Replica}`
   // por defecto los sospechosos solo se marcan (aj.ufc_auto = false en ajustesDef)
@@ -70,7 +68,7 @@ export function CalidadUfc({ s }) {
     return fichaAtipico(cand.map((x) => ({ etiqueta: `réplica ${x.Replica}`, x: cv ? x.UFC_mL : x.log10 })), { metodo, conf: Number(aj.ufc_dixon_conf) || 95, cvMax: Number(aj.ufc_cvmax) || 20, escala: cv ? 'UFC/mL' : 'log₁₀ UFC/mL', sujeto: `${g.Muestra} · T = ${g.T_h} h`, auto, ancla: 'ufcqc' })
   }
 
-  // gráfico: en cada tiempo, una columna por cepa con cada conteo (log₁₀ UFC/mL), la media
+  // gráfico: en cada tiempo, una columna por cepa con cada recuento (log₁₀ UFC/mL), la media
   // (media de las UFC/mL de las réplicas) y su error
   const todas = [...new Set(grupos.map((g) => g.Muestra))]
   const muestras = todas.filter((m) => !cepasOcultas(exp).includes(m))
@@ -89,7 +87,7 @@ export function CalidadUfc({ s }) {
         pts: ufcRes.reps.filter((x) => x.Muestra === m && x.T_h === t && x.Conteos > 0).map((x) => {
           const st = estadoPunto(x)
           return { y: x.log10, key: clave(x), estado: st,
-            tip: `${m} · réplica ${x.Replica} · T = ${t} h\nUFC/mL = ${sciCorto(x.UFC_mL)} (log₁₀ ${fx(x.log10, 2)})${x.Diluciones_usadas ? `\n${x.Diluciones_usadas}` : ''}\n${TXT[st]}${ufcRes.dixon[clave(x)] ? `\n${ufcRes.dixon[clave(x)]}` : ''}\nClic: ${st === 'fuera' ? 'reincorporar' : 'excluir'}` }
+            tip: `${m} · réplica ${x.Replica} · T = ${t} h\nUFC/mL = ${sci(x.UFC_mL)} (log₁₀ ${fx(x.log10, 2)})${x.Diluciones_usadas ? `\n${x.Diluciones_usadas}` : ''}\n${TXT[st]}${ufcRes.dixon[clave(x)] ? `\n${ufcRes.dixon[clave(x)]}` : ''}\nClic: ${st === 'fuera' ? 'reincorporar' : 'excluir'}` }
         }),
       }
     }),
@@ -103,10 +101,10 @@ export function CalidadUfc({ s }) {
     const resM = ufcRes.res.filter((x) => x.Muestra === m && finito(x.log10)).sort((a, b) => a.T_h - b.T_h)
     const tiempos = [...new Set(repsM.map((x) => x.T_h))].sort((a, b) => a - b)
     const series = [], extras = []
-    const tipR = (x) => `${m} · réplica ${x.Replica} · T = ${x.T_h} h\nUFC/mL = ${sciCorto(x.UFC_mL)} (log₁₀ ${fx(x.log10, 2)})${x.Diluciones_usadas ? `\n${x.Diluciones_usadas}` : ''}\n${TXT[estadoPunto(x)]}${ufcRes.dixon[clave(x)] ? `\n${ufcRes.dixon[clave(x)]}` : ''}\nClic: ver las réplicas de ese tiempo`
+    const tipR = (x) => `${m} · réplica ${x.Replica} · T = ${x.T_h} h\nUFC/mL = ${sci(x.UFC_mL)} (log₁₀ ${fx(x.log10, 2)})${x.Diluciones_usadas ? `\n${x.Diluciones_usadas}` : ''}\n${TXT[estadoPunto(x)]}${ufcRes.dixon[clave(x)] ? `\n${ufcRes.dixon[clave(x)]}` : ''}\nClic: ver las réplicas de ese tiempo`
     repsM.forEach((x) => clavesT.set(clave(x), { m, t: x.T_h }))
     if (mo.replicas) {
-      series.push({ id: 'p' + m, nombre: 'Conteos', color, linea: false, puntos: true, radio: 3, opacidad: 0.85, data: repsM.filter((x) => estadoPunto(x) !== 'fuera').map((x) => ({ x: x.T_h, y: x.log10, key: clave(x), tip: tipR(x) })) })
+      series.push({ id: 'p' + m, nombre: 'Recuentos', color, linea: false, puntos: true, radio: 3, opacidad: 0.85, data: repsM.filter((x) => estadoPunto(x) !== 'fuera').map((x) => ({ x: x.T_h, y: x.log10, key: clave(x), tip: tipR(x) })) })
       repsM.forEach((x) => {
         const st = estadoPunto(x)
         if (st === 'ok') return
@@ -132,7 +130,7 @@ export function CalidadUfc({ s }) {
   const lectZoom = ({ m, t }) => ufcRes.reps.filter((x) => x.Muestra === m && x.T_h === t && x.Conteos > 0 && finito(x.log10)).map((x) => {
     const st = estadoPunto(x)
     return { Muestra: m, clave: clave(x), Pocillo: 'conteo', Replica: x.Replica, Placa_T_h: t, EsBlanco: false, OD_leida: x.log10, OD_corregida: x.log10,
-      tipOD: `UFC/mL = ${sciCorto(x.UFC_mL)} (log₁₀ ${fx(x.log10, 2)})${x.Diluciones_usadas ? ` · ${x.Diluciones_usadas}` : ''}`,
+      tipOD: `UFC/mL = ${sci(x.UFC_mL)} (log₁₀ ${fx(x.log10, 2)})${x.Diluciones_usadas ? ` · ${x.Diluciones_usadas}` : ''}`,
       Usado: st !== 'fuera', Sospechoso: st === 'marcada', Motivo: TXT[st] + (ufcRes.dixon[clave(x)] ? ` · ${ufcRes.dixon[clave(x)]}` : '') }
   })
   const curvas = []   // la revisión muestra solo los recuentos: la curva del modelo está en «Curva UFC vs t»
@@ -146,13 +144,13 @@ export function CalidadUfc({ s }) {
     <div className="pagina">
       <Encabezado titulo="Revisión de los recuentos" sub="Diluciones usadas, réplicas estimadas fuera del rango contable y réplicas atípicas." />
       <Cinta>
-        <GrupoMostrar m={mo} set={setMo} notas={{ puntos: 'La raya con la media de las UFC/mL de las réplicas de cada cepa en cada tiempo', replicas: 'Cada conteo como un punto: clic en uno para excluirlo o reincorporarlo', barras: `Barras de error: ${etqErr} de las UFC/mL de las réplicas (en log₁₀: log₁₀ de media − error a media + error)` }} />
+        <GrupoMostrar m={mo} set={setMo} notas={{ puntos: 'La raya con la media de las UFC/mL de las réplicas de cada cepa en cada tiempo', replicas: 'Cada recuento como un punto: clic en uno para excluirlo o reincorporarlo', barras: `Barras de error: ${etqErr} de las UFC/mL de las réplicas (en log₁₀: log₁₀ de media − error a media + error)` }} />
         <GrupoTipoError valor={o.error} onChange={(x) => s.setAj('ufc_err', x)} />
         <GrupoModeloFasesUfc s={s} />
         <GrupoOutliers v={{ metodo: aj.ufc_dixon_on === false ? 'no' : metodo, conf: aj.ufc_dixon_conf, cvmax: aj.ufc_cvmax, auto }}
           set={{ metodo: (x) => { s.setAj('ufc_dixon_on', x !== 'no'); if (x !== 'no') s.setAj('ufc_atip_metodo', x) }, conf: (x) => s.setAj('ufc_dixon_conf', x), cvmax: (x) => s.setAj('ufc_cvmax', x), auto: (x) => s.setAj('ufc_auto', x) }}
           sobre={'\nDixon y Grubbs sobre log₁₀ UFC/mL; CV sobre UFC/mL, entre las réplicas de cada cepa y tiempo'}
-          restablecer={() => { if (window.confirm('Se borran todas las exclusiones y reincorporaciones manuales de los conteos. ¿Continuar?')) upd({ ufcExcl: [], ufcForz: [] }) }} />
+          restablecer={() => { if (window.confirm('Se borran todas las exclusiones y reincorporaciones manuales de los recuentos. ¿Continuar?')) upd({ ufcExcl: [], ufcForz: [] }) }} />
         <Grupo titulo="Gráfico">
           <BotonCinta icono="editar" texto="Personalizar" activo={pers} onClick={() => setPers(!pers)} tip="Títulos, tamaños de letra, grosores, eje Y, fondo y colores de las cepas" />
         </Grupo>
@@ -180,22 +178,22 @@ export function CalidadUfc({ s }) {
         onClick={(k) => { const r = ufcRes.reps.find((x) => clave(x) === k); if (r) alternar(r) }} estilo={{ ...s.estiloGrafico('exclusion'), yTxt: 'log₁₀ UFC/mL' }} onClose={() => setZoom(null)} lect={lectZoom(zoom)} />}
       <div className="tarjeta">
         <div className="tabla-scroll alta"><table className="tabla">
-          <thead><tr><th>Cepa</th><th className="num">T (h)</th><th className="num">Réplica</th><th>Dilución usada (colonias)</th><th className="num">UFC/mL</th><th className="num">log₁₀</th><th>Estado</th><th className="num" data-tip={cen === 'geo' ? 'Coeficiente de variación de las UFC/mL entre las réplicas incluidas (el mismo de Curva UFC y del Excel)' : 'Coeficiente de variación de las UFC/mL entre las réplicas incluidas (el mismo de Curva UFC y del Excel)\nSolo por el error de conteo (Poisson) se espera un CV ≈ 100/√C %, con C = colonias por réplica\n(p. ej. 30 colonias → 18 %; 100 → 10 %). Un CV mucho mayor indica variación entre réplicas.'}>CV % del grupo</th><th /></tr></thead>
+          <thead><tr><th>Cepa</th><th className="num">t (h)</th><th className="num">Réplica</th><th>Dilución usada (colonias)</th><th className="num">UFC/mL</th><th className="num">log₁₀</th><th>Estado</th><th className="num" data-tip={cen === 'geo' ? 'Coeficiente de variación de las UFC/mL entre las réplicas incluidas (el mismo de Curva UFC y del Excel)' : 'Coeficiente de variación de las UFC/mL entre las réplicas incluidas (el mismo de Curva UFC y del Excel)\nSolo por el error de recuento (Poisson) se espera un CV ≈ 100/√C %, con C = colonias por réplica\n(p. ej. 30 colonias → 18 %; 100 → 10 %). Un CV mucho mayor indica variación entre réplicas.'}>CV % del grupo</th><th /></tr></thead>
           <tbody>{grupos.map((g) => {
             // CV del motor (calcularUfc): réplicas que entran al promedio, sin las excluidas
             const rg = ufcRes.res.find((x) => x.Muestra === g.Muestra && x.T_h === g.T_h)
             const cv = rg ? rg.CV_pct : NaN
             const cs = (rg?._pool || []).map((q) => q.C).filter((c) => c > 0)
             const cvPoisson = cs.length ? 100 / Math.sqrt(media(cs)) : NaN
-            const tipCv = finito(cv) ? `CV = ${fx(cv, 0)} % entre ${rg.N} réplicas${cen !== 'geo' && finito(cvPoisson) ? `\nEsperado solo por conteo (Poisson): ≈ 100/√C̄ = 100/√${fx(media(cs), 0)} = ${fx(cvPoisson, 0)} %` : ''}` : undefined
+            const tipCv = finito(cv) ? `CV = ${fx(cv, 0)} % entre ${rg.N} réplicas${cen !== 'geo' && finito(cvPoisson) ? `\nEsperado solo por recuento (Poisson): ≈ 100/√C̄ = 100/√${fx(media(cs), 0)} = ${fx(cvPoisson, 0)} %` : ''}` : undefined
             return g.reps.map((r, i) => {
               const fuera = ufcRes.fuera.has(clave(r))
               const dx = ufcRes.dixon[clave(r)]
               return (
                 <tr key={clave(r)} className={fuera ? 'fuera' : ''} style={i === 0 ? { borderTop: '2px solid var(--borde2)' } : undefined}>
                   <td className="grupo">{i === 0 ? <b>{g.Muestra}</b> : ''}</td><td className="num grupo">{i === 0 ? g.T_h : ''}</td><td className="num">{r.Replica}</td>
-                  <td>{r.Diluciones_usadas || '(sin conteos)'}{r._manual && <small className="ayuda"> · a mano</small>}</td>
-                  <td className="num"><Valor f={fRep(r)}>{sciCorto(r.UFC_mL)}</Valor></td><td className="num">{fx(r.log10, 2)}</td>
+                  <td>{r.Diluciones_usadas || '(sin recuentos)'}{r._manual && <small className="ayuda"> · a mano</small>}</td>
+                  <td className="num"><Valor f={fRep(r)}>{sci(r.UFC_mL)}</Valor></td><td className="num">{fx(r.log10, 2)}</td>
                   <td><span className={`chip ${fuera ? 'peligro' : dx ? 'aviso' : CHIP[r._estado]} ${dx ? 'calc' : ''}`} data-tip={dx ? `${dx}\nClic: ver el test` : undefined} onClick={dx ? () => s.abrirFicha(fAtip(g)()) : undefined}>{fuera ? (dx && !exp.ufcExcl.includes(clave(r)) ? `${nombreTest}: excluida` : 'Excluida a mano') : dx ? (auto ? `${nombreTest} (reincorporada)` : `${nombreTest}: marcada`) : r.Estado}</span></td>
                   <td className="num grupo">{i === 0 ? <span style={{ color: cv > 50 ? 'var(--aviso)' : undefined }} data-tip={tipCv}>{fx(cv, 0)}</span> : ''}</td>
                   <td><button className="chico" onClick={() => alternar(r)}>{fuera ? 'Reincorporar' : 'Excluir'}</button></td>

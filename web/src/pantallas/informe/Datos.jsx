@@ -6,14 +6,13 @@ import { finito } from '../../calculo/comun/analisis.js'
 import { odCorregida } from '../../calculo/od/odmanual.js'
 import { TIPOS, ORIGENES, VERSION, dilucionesUfc, replicaOd, serieUfc } from '../../datos/experimento.js'
 import { APP_VERSION } from '../../app/version.js'
-import { Encabezado, Icono, Vacio } from '../../ui/base.jsx'
-import { BotonCinta, CampoCinta, Cinta, Grupo, Mosaico, OpcionesCinta } from '../../ui/cinta.jsx'
-import { descargarBlob, sciCorto, signif } from '../../comun/utils.js'
-import { CLAVES_RESUMEN, ajustesOd, comparacionMu, resumenPorCepa } from '../od/Parametros.jsx'
-import { mediaPorTiempo } from '../od/Curva.jsx'
-import { calibracionDe } from '../calibracion/Combinado.jsx'
-import { crecimientoPorCepa } from '../ufc/ParamUfc.jsx'
-import { MODELOS_UFC, errorMediaUfc, estadisticaUfc, modeloUfc, prediccionUfc } from '../../calculo/ufc/index.js'
+import { Encabezado, Vacio } from '../../ui/base.jsx'
+import { BotonCinta, Cinta, Grupo } from '../../ui/cinta.jsx'
+import { descargarBlob, sci, signif } from '../../comun/utils.js'
+import { comparacionMu, calibracionDe } from '../../calculo/calibracion/pares.js'
+import { CLAVES_RESUMEN, ajustesOd, resumenPorCepa } from '../../calculo/od/parametros.js'
+import { mediaPorTiempo } from '../../calculo/od/medias.js'
+import { crecimientoPorCepa, MODELOS_UFC, errorMediaUfc, estadisticaUfc, modeloUfc, prediccionUfc } from '../../calculo/ufc/index.js'
 
 const r4 = (x) => (typeof x === 'number' ? (finito(x) ? signif(x, 6) : null) : x)
 // Valor de un ajuste para el Excel: los objetos/listas van como JSON (String(obj) daba «[object Object]»)
@@ -51,9 +50,9 @@ function trazabilidad(s) {
     add('UFC: parámetros', 'Volumen sembrado (µL), rango contable', JSON.stringify({ vol: u.vol, min: u.min, max: u.max, nd: u.nd, estimados: u.estimados, primero: u.primero, toma: u.toma, diluyente: u.diluyente, pasos: u.pasos }))
     add('UFC: parámetros', 'Dilución total de cada columna', serieUfc(u).map((d) => d.D))
     Object.entries(dilucionesUfc(u)).forEach(([g, d]) => add('UFC: dilución usada por cepa y tiempo', g, `columna ${d.k === null ? '(ninguna)' : d.k}${d.manual ? ' (elegida a mano)' : ' (sugerida)'}`))
-    ;(u.filas || []).forEach((f) => add('UFC: conteos crudos (colonias por columna de dilución)', `${f.muestra} | t = ${f.t} h | réplica ${f.replica}`, JSON.stringify(f.c || {})))
+    ;(u.filas || []).forEach((f) => add('UFC: recuentos crudos (colonias por columna de dilución)', `${f.muestra} | t = ${f.t} h | réplica ${f.replica}`, JSON.stringify(f.c || {})))
   }
-  return { id: 'trazabilidad', titulo: 'Trazabilidad', nota: 'Versión del programa, origen de los datos, todos los ajustes, decisiones manuales (ventanas, exclusiones, pares de calibración) y conteos crudos de UFC con los que se obtuvo este análisis.', columnas: ['Seccion', 'Clave', 'Valor'], filas: F }
+  return { id: 'trazabilidad', titulo: 'Trazabilidad', nota: 'Versión del programa, origen de los datos, todos los ajustes, decisiones manuales (ventanas, exclusiones, pares de calibración) y recuentos crudos de UFC con los que se obtuvo este análisis.', columnas: ['Seccion', 'Clave', 'Valor'], filas: F }
 }
 
 const limpiar = (filas) => filas.map((f) => Object.fromEntries(Object.entries(f).filter(([k]) => k[0] !== '_').map(([k, v]) => [k, r4(v)])))
@@ -107,7 +106,7 @@ export function tablasDe(s) {
       const lf = exp.opciones?.['curva.lagfijo'] ?? ''
       const aOd = ajustesOd(s, modOd, [...new Set(res.map((r) => r.Muestra))], lf, !!exp.opciones?.['curva.ajusteRep'])
       const filasMod = aOd.filter((a) => a.c?.ok).map((a) => ({ Muestra: a.cepa, Serie: a.nombre, Modelo: MODELOS_UFC[modOd], Variante: a.c.variante, mu_h: a.c.mu, EE_mu_h: a.c.ee_mu, td_h: Math.LN2 / a.c.mu, EE_td_h: a.c.ee_td, lag_h: a.c.lag_h, EE_lag_h: a.c.ee_lag, Lag_fijado: a.c.lagFijo ? 'Sí' : 'No', Correlacion_mu_lag: a.c.corr_mu_lag, OD0_ajustada: 10 ** a.c.y0, ODmax: finito(a.c.yEnd) ? 10 ** a.c.yEnd : null, R2: a.c.r2, R2_ajustado: a.c.r2adj, EE_ajuste_log10: a.c.se, gl: a.c.gl, Puntos: a.c.n }))
-      if (filasMod.length) T.push({ id: 'od_modelo', hoja: 'Modelo de la OD', titulo: `Modelo de la OD (${MODELOS_UFC[modOd]})`, nota: `Ajuste no lineal sobre ln(OD) (OD ≥ ${String(serie?.aj?.an_lnmin ?? exp.aj?.an_lnmin ?? 0.01).replace('.', ',')}), ${exp.opciones?.['curva.ajusteRep'] ? 'una ecuación por réplica' : 'una ecuación por cepa con todas sus réplicas'}. EE = error estándar de cada parámetro (matriz de covarianza del ajuste). Correlacion_mu_lag: si es cercana a ±1, μ y el lag no se pueden separar con estos datos.`, columnas: Object.keys(filasMod[0]), filas: filasMod })
+      if (filasMod.length) T.push({ id: 'od_modelo', hoja: 'Modelo de la OD', titulo: `Modelo de la OD (${MODELOS_UFC[modOd]})`, nota: `Ajuste no lineal sobre ln(OD) (OD ≥ ${String(serie?.aj?.an_lnmin ?? exp.aj?.an_lnmin ?? 0.01).replace('.', ',')}), ${exp.opciones?.['curva.ajusteRep'] ? 'una ecuación por réplica' : 'una ecuación por cepa con la media de las réplicas en cada tiempo'}. EE = error estándar de cada parámetro (matriz de covarianza del ajuste). Correlacion_mu_lag: si es cercana a ±1, μ y el lag no se pueden separar con estos datos.`, columnas: Object.keys(filasMod[0]), filas: filasMod })
     }
     const rs = resumenPorCepa(res)
     const cols = ['Muestra', 'n', 'n_unidad', 'tipo_de_error', 'mu_max_EE_pendiente', ...CLAVES_RESUMEN.flatMap((k) => (k === 'r2' ? ['r2_min', 'r2_n'] : [`${k}_media`, `${k}_DE`, `${k}_IC95`, `${k}_n`]))]
@@ -139,8 +138,8 @@ export function tablasDe(s) {
       filas: cal.pares.map((p) => ({ Muestra: p.Muestra, T_h: p.T_h, Fase_OD: FASE[p.faseOd] || '', Fase_UFC: FASE[p.fase] || '', Usado: p.usado ? 'Sí' : 'No', Elegido_a_mano: p.manual ? 'Sí' : 'No', OD: p.OD, OD_interpolada: p.OD_interpolada ? 'Sí' : 'No', UFC_mL: p.UFC_mL, log10_UFC: p.log10_UFC })) })
     const fc = Object.entries(cal.calCepa).map(([m, c]) => ({ Muestra: m, Ecuacion: c.ok ? c.ecuacion : '', m_pendiente: c.coef?.m, b_ordenada: c.coef?.b, Pares: c.n, R2_log10: c.R2, Error_tipico_log10: c.sigma, gl: c.gl, OD_min: c.rango?.[0], OD_max: c.rango?.[1], Aviso: c.ok ? c.aviso : c.motivo }))
     if (fc.length) T.push({ id: 'calibracion', titulo: 'Calibración OD ↔ UFC/mL', nota: 'Recta por mínimos cuadrados log₁₀ UFC/mL = m·OD + b con los pares usados. Error típico = √[SCE / (n − 2)] en log₁₀.', columnas: Object.keys(fc[0]), filas: fc })
-    const cm = comparacionMu(s).map(({ r, c, ...x }) => x)
-    if (cm.length) T.push({ id: 'comparacion', titulo: 'μ por OD y por recuento', nota: 'μ OD: media de las réplicas de la pendiente máxima de ln(OD). μ UFC: modelo de los recuentos. Cociente descriptivo.', columnas: Object.keys(cm[0]), filas: cm })
+    const cm = comparacionMu(s).map(({ r, c, x: _x, ...x }) => x)
+    if (cm.length) T.push({ id: 'comparacion', titulo: 'μ por OD y por recuento', nota: 'Cada μ sale del método de su columna (Metodo_OD: el elegido en «Modelo» de Curva OD; Metodo_UFC: el de Curva UFC). EE: error estándar del ajuste; con un ajuste por réplica o la ventana entre réplicas, Error_OD indica DE. td: EE por el método delta. Cociente descriptivo.', columnas: Object.keys(cm[0]), filas: cm })
   }
   T.push(trazabilidad(s))
   return T.map((t) => ({ ...t, filas: limpiar(t.filas) }))
@@ -159,7 +158,7 @@ export async function descargarExcel(s, tablas = tablasDe(s)) {
 }
 
 // números de la tabla en pantalla: coma decimal; los muy grandes o muy chicos (UFC/mL) en notación compacta 1,507E+5, como en el resto del programa
-const celda = (v) => (v === null || v === undefined ? '' : typeof v === 'number' ? (Math.abs(v) >= 1e4 || (Math.abs(v) < 1e-3 && v !== 0) ? sciCorto(v, 3) : String(signif(v, 5)).replace('.', ',')) : String(v))
+const celda = (v) => (v === null || v === undefined ? '' : typeof v === 'number' ? (Math.abs(v) >= 1e4 || (Math.abs(v) < 1e-3 && v !== 0) ? sci(v, 3) : String(signif(v, 5)).replace('.', ',')) : String(v))
 
 export function Datos({ s }) {
   const tablas = useMemo(() => tablasDe(s), [s.pre, s.res, s.ufcRes, s.serie, s.exp]) // eslint-disable-line react-hooks/exhaustive-deps

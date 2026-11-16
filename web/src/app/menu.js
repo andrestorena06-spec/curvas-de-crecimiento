@@ -10,7 +10,7 @@ import { PlacasTiempo } from '../pantallas/od/Placas.jsx'
 import { Cubeta } from '../pantallas/od/Cubeta.jsx'
 import { Calidad } from '../pantallas/od/Calidad.jsx'
 import { Curva } from '../pantallas/od/Curva.jsx'
-import { Conteo } from '../pantallas/ufc/Conteo.jsx'
+import { Recuento } from '../pantallas/ufc/Conteo.jsx'
 import { CalidadUfc } from '../pantallas/ufc/CalidadUfc.jsx'
 import { CurvaUfc } from '../pantallas/ufc/CurvaUfc.jsx'
 import { Combinado } from '../pantallas/calibracion/Combinado.jsx'
@@ -25,7 +25,7 @@ export const PANTALLAS = {
   lecturas: { titulo: 'Cargar datos', largo: 'Cargar datos de OD', icono: 'cubeta', vista: Cubeta },
   calidad: { titulo: 'Revisión', largo: 'Revisión de la OD', icono: 'escudo', vista: Calidad },
   curva: { titulo: 'Curva', largo: 'Curva OD vs t', icono: 'curva', vista: Curva },
-  conteo: { titulo: 'Cargar datos', largo: 'Cargar conteos', icono: 'colonia', vista: Conteo },
+  conteo: { titulo: 'Cargar datos', largo: 'Cargar recuentos', icono: 'colonia', vista: Recuento },
   calidadUfc: { titulo: 'Revisión', largo: 'Revisión de los recuentos', icono: 'escudo', vista: CalidadUfc },
   curvaUfc: { titulo: 'Curva', largo: 'Curva UFC vs t', icono: 'curva', vista: CurvaUfc },
   combinado: { titulo: 'OD ↔ UFC', largo: 'Calibración OD ↔ UFC', icono: 'combinar', vista: Combinado },
@@ -40,7 +40,6 @@ export const GRUPOS = {
   informe: { titulo: 'Informe', icono: 'libro', hijos: ['metodos', 'datos'] },
 }
 export const grupoDe = (id) => Object.keys(GRUPOS).find((g) => GRUPOS[g].hijos.includes(id))
-export const TITULO_PASO = Object.fromEntries(Object.entries(PANTALLAS).map(([k, v]) => [k, v.titulo]))
 export const NOMBRE_LARGO = Object.fromEntries(Object.entries(PANTALLAS).map(([k, v]) => [k, v.largo]))
 
 // Pantallas de un experimento, en el orden del procesamiento

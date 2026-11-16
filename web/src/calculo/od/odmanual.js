@@ -8,7 +8,7 @@
 // Las filas se convierten en series por pocillo «virtual» para usar el mismo gráfico y análisis que las placas.
 // ============================================================
 import { finito, media, desvio } from '../comun/analisis.js'
-import { pocillos96 } from './lectura.js'
+import { pocillos96 } from '../../comun/utils.js'
 
 export const manualDef = () => ({
   nd: 3,              // columnas de lectura: sin diluir, −1, −2, …

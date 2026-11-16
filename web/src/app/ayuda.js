@@ -1,6 +1,6 @@
 // Etiquetas, ayuda e interpretación de cada parámetro (equivale a params_etiquetas / params_ayuda / explicar_resultado de la app en R)
 import { finito } from '../calculo/comun/analisis.js'
-import { tCuantil } from '../comun/utils.js'
+import { fs, tCuantil } from '../comun/utils.js'
 
 export const PARAMS = {
   mu_max: 'μmax (h⁻¹)',
@@ -103,9 +103,7 @@ export const AYUDA = {
   },
 }
 
-// signif(x, d) como en R
-export const signif = (x, d = 4) => (finito(x) ? Number(x.toPrecision(d)) : NaN)
-export const f4 = (x, d = 4) => (finito(x) ? String(signif(x, d)) : 'NA')
+const f4 = (x, d = 4) => fs(x, d)
 
 // Texto de "cómo se calculó" y "error estadístico" de un parámetro para un pocillo
 export function explicarResultado(r, p, op) {
@@ -163,20 +161,3 @@ export function explicarResultado(r, p, op) {
   return { calculo, error }
 }
 
-export const MODELOS_ETQ = { gompertz: 'Gompertz modificado', logistico: 'Logístico', richards: 'Richards', baranyi: 'Baranyi-Roberts' }
-
-export const ETIQUETAS_AJUSTE = {
-  corregir_blanco: 'Corregir al blanco', blanco_metodo: 'Método de blanco', normalizar: 'Normalización',
-  n_od0: 'Puntos iniciales (respaldo y normalización)', od0_metodo: 'Método de OD0', suavizado: 'Suavizado',
-  suav_k: 'Suavizado: ventana', suav_span: 'Suavizado: span LOESS', hampel_on: 'Filtro de Hampel activado',
-  hampel_k: 'Hampel: semiventana (puntos)', hampel_sigma: 'Hampel: umbral (MAD)', hampel_min: 'Hampel: diferencia mínima (OD)',
-  hampel_accion: 'Hampel: acción', odmax_on: 'Excluir sobre OD máxima', odmax: 'OD máxima confiable',
-  pocillo_factor: 'Pocillos: factor de desvío',
-  pocillo_min: 'Pocillos: desvío mínimo (OD)', pocillo_div: 'Pocillos: divergencia de AUC (%)',
-  unidad_tiempo: 'Unidad de tiempo del gráfico', modo_grafico: 'Tipo de gráfico', escala_y: 'Escala del eje Y',
-  tipo_error: 'Tipo de error', mostrar_excluidos: 'Mostrar puntos excluidos', an_ancho: 'Ventana de ln(OD) (h)',
-  an_minpts: 'Puntos mínimos por ventana', an_lnmin: 'OD mínima para ln', an_r2: 'R2 mínimo de la ventana',
-  an_lag_metodo: 'Método de lag', an_lag_factor: 'Lag: factor sobre OD0', an_umbral_od: 'OD umbral',
-  an_frac_exp: 'Fracción de μmax (exponencial)', an_frac_est: 'Fracción de μmax (estacionaria)',
-  an_muerte_pct: 'Caída para fase de muerte (%)', an_spline: 'μmax por spline',
-}

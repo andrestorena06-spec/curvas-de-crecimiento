@@ -56,11 +56,29 @@ export const fin = Number.isFinite
 export const signif = (x, d = 4) => (fin(x) ? Number(x.toPrecision(d)) : NaN)
 export const fx = (x, d = 3) => (fin(x) ? x.toFixed(d).replace('.', ',') : '–')
 export const fs = (x, d = 4) => (fin(x) ? String(signif(x, d)).replace('.', ',') : '–')
-export const sci = (x, d = 2) => (fin(x) ? x.toExponential(d).replace('e+', ' × 10^').replace('e-', ' × 10^-').replace('.', ',') : '–')
-export const sciCorto = (x, d = 2) => (fin(x) ? x.toExponential(d).replace('.', ',').replace('e+', 'E+').replace('e-', 'E-') : '–')
+// Valor ± error con los MISMOS decimales: los que dejan el error con `cifras` cifras significativas (1,59 ± 0,30; 0,00910 ± 0,00016).
+// Sin error (o error nulo) el valor va con `sinError` cifras significativas. Devuelve { v, e } (e = '' si no hay error).
+export function conError(valor, error, cifras = 2, sinError = 4) {
+  if (!fin(valor)) return { v: '–', e: '' }
+  if (!fin(error) || !(error > 0)) return { v: fs(valor, sinError), e: '' }
+  const d = Math.min(8, Math.max(0, cifras - 1 - Math.floor(Math.log10(error))))
+  return { v: fx(valor, d), e: fx(error, d) }
+}
+const SUPER = { '-': '⁻', '−': '⁻', '.': '·', 0: '⁰', 1: '¹', 2: '²', 3: '³', 4: '⁴', 5: '⁵', 6: '⁶', 7: '⁷', 8: '⁸', 9: '⁹' }
+// texto en superíndice (exponentes): 5 → ⁵, -3 → ⁻³
+export const superindice = (t) => String(t).replace(/[-−.0-9]/g, (c) => SUPER[c])
+// Notación científica: la ÚNICA del programa (2,76 × 10⁵). De 0,001 a 9999 se escribe el número tal cual.
+export function sci(x, d = 2) {
+  if (!fin(x)) return '–'
+  if (x === 0) return '0'
+  let e = Math.floor(Math.log10(Math.abs(x)))
+  if (e >= -3 && e <= 3) return fs(x, d + 1)
+  let m = x / 10 ** e
+  if (Math.abs(Number(m.toFixed(d))) >= 10) { m /= 10; e += 1 }
+  return `${m.toFixed(d).replace('.', ',')} × 10${superindice(e)}`
+}
 const SUB = '₀₁₂₃₄₅₆₇₈₉'
 export const sub = (n) => String(n).replace(/\d/g, (d) => SUB[Number(d)])
-export const nombreRep = (m, r) => m + sub(r)
 
 let _n = 0
 export const nuevoId = () => Math.random().toString(36).slice(2, 9) + (_n++ % 10)

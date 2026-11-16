@@ -8,16 +8,16 @@
 // quedaría chico). Los datos originales nunca se modifican.
 // ============================================================
 import { detectar, detectarCV } from '../comun/atipicos.js'
-import { analizarCurva, aplicarHampel, finito, mediana, media, suavizarVector, trapz } from '../comun/analisis.js'
-import { pocillos96 } from './lectura.js'
+import { analizarCurva, aplicarHampel, cuotaDe, finito, mediana, media, suavizarVector, trapz } from '../comun/analisis.js'
+import { fx, pocillos96 } from '../../comun/utils.js'
+import { r3 } from './lectura.js'
+export { r3 }
 
-export const r3 = (t) => Math.round(t * 1000) / 1000
 export const clavePunto = (p, t) => `${p}|${r3(t)}`
 const ORDEN = Object.fromEntries(pocillos96().map((p, i) => [p, i]))
 const subindice = (n) => String(n).replace(/\d/g, (d) => '₀₁₂₃₄₅₆₇₈₉'[Number(d)])
 export const nombreReplica = (m, r) => m + subindice(r)
 const num = (x, def) => { const v = Number(x); return finito(v) ? v : def }
-const f3 = (x) => (finito(x) ? x.toFixed(3) : 'NA')
 
 export const estadoVacio = () => ({ puntosExcl: [], forzados: [], pocillosExcl: [], ventanas: {} })
 
@@ -25,7 +25,7 @@ export const opAnalisis = (aj) => ({
   ancho: num(aj.an_ancho, 2), minpts: Math.max(3, Math.round(num(aj.an_minpts, 4))), lnmin: num(aj.an_lnmin, 0.01),
   r2min: num(aj.an_r2, 0.98), n_od0: num(aj.n_od0, 3), od0_metodo: aj.od0_metodo || 'auto',
   lag_metodo: aj.an_lag_metodo || 'tangente', lag_factor: num(aj.an_lag_factor, 2), umbral_od: num(aj.an_umbral_od, 0.3),
-  quota: (() => { const v = aj.an_quota === undefined || aj.an_quota === '' ? 95 : Number(aj.an_quota); return Number.isFinite(v) && v > 0 && v < 100 ? v / 100 : NaN })(), frac_exp: num(aj.an_frac_exp, 0.5), frac_est: num(aj.an_frac_est, 0.1), muerte_pct: num(aj.an_muerte_pct, 10), spline: !!aj.an_spline,
+  quota: cuotaDe(aj), frac_exp: num(aj.an_frac_exp, 0.5), frac_est: num(aj.an_frac_est, 0.1), muerte_pct: num(aj.an_muerte_pct, 10), spline: !!aj.an_spline,
 })
 
 // Serie original de un pocillo: [{t (s), y}] con valores finitos
@@ -85,7 +85,7 @@ function marcarPozo(datos, c, E, aj, blanco) {
     base.forEach((r, i) => {
       if (r.y > odmax) {
         marca[i] = 'OD sobre el máximo'
-        detalle[i] = `OD = ${f3(r.y)}, mayor que la OD máxima confiable (${f3(odmax)}). El lector pierde linealidad.`
+        detalle[i] = `OD = ${fx(r.y)}, mayor que la OD máxima confiable (${fx(odmax)}). El lector pierde linealidad.`
       }
     })
   }
@@ -98,8 +98,8 @@ function marcarPozo(datos, c, E, aj, blanco) {
     h.flag.forEach((f, i) => {
       if (f && marca[i] === null) {
         marca[i] = accion === 'interpolar' ? 'Aberrante (interpolado)' : 'Aberrante (Hampel)'
-        detalle[i] = `Se aparta ${f3(h.dif[i])} OD de la mediana de sus vecinos (${f3(h.med[i])}). El umbral era ${f3(h.umbral[i])} (${nsig} × MAD, mínimo ${f3(minDif)}).`
-        if (accion === 'interpolar') detalle[i] += ` Valor original ${f3(yAntes[i])}, reemplazado por ${f3(y[i])}.`
+        detalle[i] = `Se aparta ${fx(h.dif[i])} OD de la mediana de sus vecinos (${fx(h.med[i])}). El umbral era ${fx(h.umbral[i])} (${String(nsig).replace('.', ',')} × MAD, mínimo ${fx(minDif)}).`
+        if (accion === 'interpolar') detalle[i] += ` Valor original ${fx(yAntes[i])}, reemplazado por ${fx(y[i])}.`
       }
     })
   }
@@ -148,7 +148,7 @@ function aplicarDixon(marcado, E, aj) {
       if (c.idx === null) return
       const { w, f } = g[c.idx]
       f.marca = 'Aberrante (RSD)'
-      f.detalle = `RSD de las réplicas en ese tiempo = ${c.stat.toFixed(1)} % > límite ${lim} % (réplica más alejada de la media, extremo ${c.lado}; sin ella, RSD = ${c.cvSin.toFixed(1)} %).`
+      f.detalle = `RSD de las réplicas en ese tiempo = ${fx(c.stat, 1)} % > límite ${lim} % (réplica más alejada de la media, extremo ${c.lado}; sin ella, RSD = ${fx(c.cvSin, 1)} %).`
       f.motivo = motivoDe(w, f)
       return
     }
@@ -157,7 +157,7 @@ function aplicarDixon(marcado, E, aj) {
       if (gr.idx === null || gr.idx === undefined) return
       const { w, f } = g[gr.idx]
       f.marca = 'Aberrante (Grubbs)'
-      f.detalle = `Test de Grubbs (extremo ${gr.lado}): G = ${gr.stat.toFixed(3)} > crítico ${gr.crit.toFixed(3)} (n = ${gr.n} réplicas, confianza ${conf} %).`
+      f.detalle = `Test de Grubbs (extremo ${gr.lado}): G = ${fx(gr.stat, 3)} > crítico ${fx(gr.crit, 3)} (n = ${gr.n} réplicas, confianza ${conf} %).`
       f.motivo = motivoDe(w, f)
       return
     }
@@ -166,8 +166,8 @@ function aplicarDixon(marcado, E, aj) {
     const { w, f } = g[d.i]
     f.marca = 'Aberrante (Dixon)'
     f.detalle = d.metodo === 'Grubbs'
-      ? `Test de Grubbs (más de 10 réplicas, extremo ${d.lado}): G = ${d.q.toFixed(3)} > crítico ${d.crit.toFixed(3)} (n = ${d.n}, confianza ${d.conf} %).`
-      : `Test Q de Dixon (extremo ${d.lado}): Q = ${d.q.toFixed(3)} > crítico ${d.crit.toFixed(3)} (n = ${d.n} réplicas, confianza ${d.conf} %).`
+      ? `Test de Grubbs (más de 10 réplicas, extremo ${d.lado}): G = ${fx(d.q, 3)} > crítico ${fx(d.crit, 3)} (n = ${d.n}, confianza ${d.conf} %).`
+      : `Test Q de Dixon (extremo ${d.lado}): Q = ${fx(d.q, 3)} > crítico ${fx(d.crit, 3)} (n = ${d.n} réplicas, confianza ${d.conf} %).`
     f.motivo = motivoDe(w, f)
   })
 }
@@ -246,7 +246,7 @@ export function calcularQC({ marcado, config, E, aj }) {
     const N_quitados = q.length
     let Puntos_quitados = ''
     if (q.length) {
-      let s = q.map((x) => `${(x.t / 3600).toFixed(2)} h (${x.tipo})`)
+      let s = q.map((x) => `${fx((x.t / 3600), 2)} h (${x.tipo})`)
       if (s.length > 8) s = [...s.slice(0, 8), `... y ${s.length - 8} más`]
       Puntos_quitados = s.join('; ')
     }
@@ -264,14 +264,14 @@ export function calcularQC({ marcado, config, E, aj }) {
     else if (n_rep === 2) {
       if (finito(dif_pct) && dif_pct > divP) {
         Categoria = 'Divergentes'
-        Estado = `Réplicas divergentes (el AUC difiere ${dif_pct.toFixed(0)}%; con 2 réplicas no se sabe cuál falla)`
+        Estado = `Réplicas divergentes (el AUC difiere ${fx(dif_pct, 0)}%; con 2 réplicas no se sabe cuál falla)`
       } else { Categoria = 'OK'; Estado = 'OK' }
     } else if (m && m.atip) {
       Categoria = 'Sospechoso'
       Estado = `Sospechoso entre réplicas. ${m.atip}`
     } else if (finito(d_ref) && d_mediana > factor * d_ref && d_mediana > minP) {
       Categoria = 'Sospechoso'
-      Estado = `Sospechoso (se aparta ${ratio.toFixed(1)} veces más de la mediana que sus réplicas)`
+      Estado = `Sospechoso (se aparta ${fx(ratio, 1)} veces más de la mediana que sus réplicas)`
     } else if (ruidoso) {
       Categoria = 'Ruidoso'
       Estado = `Curva ruidosa (${Pts_aberrantes} de ${N_total} puntos marcados por el filtro)`
@@ -338,10 +338,3 @@ export function analizarTodos(proc, aj, ventanas) {
   }).sort((a, b) => ORDEN[a.Pocillo] - ORDEN[b.Pocillo])
 }
 
-// Curva media de una muestra (tiempo a tiempo) a partir de los pocillos dados
-export function curvaMedia(wells) {
-  const por = new Map()
-  wells.forEach((w) => w.t.forEach((t, i) => { if (finito(w.y[i])) { if (!por.has(t)) por.set(t, []); por.get(t).push(w.y[i]) } }))
-  const ts = [...por.keys()].sort((a, b) => a - b)
-  return { t: ts, y: ts.map((t) => media(por.get(t))), n: ts.map((t) => por.get(t).length) }
-}

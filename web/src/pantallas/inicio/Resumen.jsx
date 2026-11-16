@@ -2,18 +2,20 @@
 // (con un enlace a cada lugar) y los resultados principales. Cada mosaico lleva a su pestaña.
 import { useMemo, useState } from 'react'
 import { finito } from '../../calculo/comun/analisis.js'
-import { centroLog10, centroUfc, curvaUfc, tipValorUfc, valorUfc } from '../../calculo/ufc/index.js'
+import { centroLog10, centroUfc, curvaUfc, tipValorUfc } from '../../calculo/ufc/index.js'
 import { TIPOS, ORIGENES, filasConConteo, filasConOd, replicaOd } from '../../datos/experimento.js'
 import { Icono } from '../../ui/base.jsx'
 import { BotonCinta, Cinta, Grupo, Mosaico } from '../../ui/cinta.jsx'
 import { Grafico } from '../../ui/graficos/grafico.jsx'
-import { fs, fx, sciCorto } from '../../comun/utils.js'
-import { mediaPorTiempo } from '../od/Curva.jsx'
-import { celdaResumen, fichaCeldaResumen, resumenPorCepa } from '../od/Parametros.jsx'
+import { conError, fx } from '../../comun/utils.js'
+import { mediaPorTiempo } from '../../calculo/od/medias.js'
+import { fichaCeldaResumen } from '../od/Parametros.jsx'
+import { celdaResumen, muOdPorCepa, textoMetodoOd } from '../../calculo/od/parametros.js'
 import { Valor } from '../../fichas/FichaCalculo.jsx'
+import { fichaModeloOd } from '../../fichas/index.js'
 import { EditarExperimento } from './EditarExperimento.jsx'
 
-const NOMBRE_PASO = { archivo: 'Cargar datos de OD', placa: 'Pocillos', placas: 'Cargar datos de OD', lecturas: 'Cargar datos de OD', conteo: 'Cargar conteos', calidad: 'Revisión de la OD', calidadUfc: 'Revisión de los recuentos', curva: 'Curva OD vs t', curvaUfc: 'Curva UFC vs t', combinado: 'OD ↔ UFC' }
+const NOMBRE_PASO = { archivo: 'Cargar datos de OD', placa: 'Pocillos', placas: 'Cargar datos de OD', lecturas: 'Cargar datos de OD', conteo: 'Cargar recuentos', calidad: 'Revisión de la OD', calidadUfc: 'Revisión de los recuentos', curva: 'Curva OD vs t', curvaUfc: 'Curva UFC vs t', combinado: 'OD ↔ UFC' }
 
 // Lo que conviene revisar antes de dar el análisis por terminado: [{ nivel: 'aviso' | 'info', texto, ir }]
 function pendientes(s) {
@@ -40,10 +42,10 @@ function pendientes(s) {
     if (conAviso.length) out.push({ nivel: 'info', texto: `${conAviso.length} curva${conAviso.length > 1 ? 's' : ''} con avisos en los parámetros (por ejemplo, pocos puntos o R² bajo).`, ir: 'curva' })
   }
   if (ufc) {
-    if (!filasConConteo(exp).length) out.push({ nivel: 'aviso', texto: exp.ufc.filas.length ? `Todavía no hay conteos de colonias: las ${exp.ufc.filas.length} filas están vacías.` : 'Todavía no hay conteos de colonias.', ir: 'conteo' })
+    if (!filasConConteo(exp).length) out.push({ nivel: 'aviso', texto: exp.ufc.filas.length ? `Todavía no hay recuentos de colonias: las ${exp.ufc.filas.length} filas están vacías.` : 'Todavía no hay recuentos de colonias.', ir: 'conteo' })
     if (ufcRes?.hay) {
       const sinDil = ufcRes.reps.filter((r) => r._estado === 'sin_dilucion').length
-      if (sinDil) out.push({ nivel: 'aviso', texto: `${sinDil} réplica${sinDil > 1 ? 's' : ''} sin conteo en la dilución elegida para su cepa.`, ir: 'conteo' })
+      if (sinDil) out.push({ nivel: 'aviso', texto: `${sinDil} réplica${sinDil > 1 ? 's' : ''} sin recuento en la dilución elegida para su cepa.`, ir: 'conteo' })
       const est = ufcRes.reps.filter((r) => ['bajo', 'alto'].includes(r._estado)).length
       if (est) out.push({ nivel: 'info', texto: `${est} réplica${est > 1 ? 's' : ''} estimada${est > 1 ? 's' : ''} fuera del rango contable.`, ir: 'calidadUfc' })
       if (ufcRes.fuera.size) out.push({ nivel: 'info', texto: `${ufcRes.fuera.size} réplica${ufcRes.fuera.size > 1 ? 's' : ''} de UFC fuera de la media (test o a mano).`, ir: 'calidadUfc' })
@@ -81,9 +83,9 @@ export function Resumen({ s }) {
   const pasosTrabajo = s.pasos.filter((p) => NOMBRE_PASO[p])
   const hechos = pasosTrabajo.filter((p) => s.listo(p)).length
   const proximo = pasosTrabajo.find((p) => !s.listo(p))
-  // μmax por cepa: media entre réplicas ± DE (o, con una sola curva por cepa, ± EE de la pendiente)
-  const muPorCepa = (res?.length ? resumenPorCepa(res, ['mu_max']) : []).filter((r) => finito(r.mu_max.m))
-  const muMax = Math.max(0.01, ...muPorCepa.map((r) => r.mu_max.m))
+  // μ por cepa con el método elegido en «Modelo» de Curva OD (muOdPorCepa): la misma que en OD ↔ UFC, Datos y Métodos
+  const muPorCepa = muOdPorCepa(s).filter((x) => finito(x.mu))
+  const muMax = Math.max(0.01, ...muPorCepa.map((x) => x.mu))
   const c = exp.cond
   const ficha = [
     ['Organismo', c.organismo], ['Medio', c.medio], ['Temperatura', c.temperatura !== '' && c.temperatura !== undefined ? `${c.temperatura} °C` : ''],
@@ -151,24 +153,25 @@ export function Resumen({ s }) {
           </Mosaico>
         )}
         {od && (
-          <Mosaico titulo="μmax por cepa" accion="Curva OD" onAccion={() => s.irA('curva')}>
-            {muPorCepa.length ? muPorCepa.map((r) => {
-              const m = r.Muestra, c = celdaResumen(r, 'mu_max')
+          <Mosaico titulo="μ por cepa" accion="Curva OD" onAccion={() => s.irA('curva')}>
+            {muPorCepa.length ? muPorCepa.map((x) => {
+              const m = x.Muestra, pocoN = x.metodo === 'ventana' && celdaResumen(x.r, 'mu_max').pocoN
+              const ficha = x.metodo === 'ventana' ? fichaCeldaResumen(s, x.r, 'mu_max') : x.a ? () => fichaModeloOd(x.a.c, x.a.pts, { foco: 'mu', nombre: m, color: s.colores[m] }) : null
               return (
                 <div key={m} className="barra-cepa" style={{ gridTemplateColumns: '96px 1fr auto' }}>
                   <span>{m}</span>
-                  <div><i style={{ width: `${(100 * r.mu_max.m) / muMax}%`, background: s.colores[m] }} /></div>
-                  <b style={{ whiteSpace: 'nowrap' }}><Valor f={fichaCeldaResumen(s, r, 'mu_max')}>{fs(r.mu_max.m, 3)}{c.tipo ? <small className="ayuda"> ± {fs(c.err, 2)}{c.tipo === 'EE' ? ' (EE)' : ''}</small> : null}</Valor> <small className="ayuda">(n={r.nTxt})</small>{c.pocoN ? <small style={{ color: 'var(--aviso)' }}> ⚠</small> : null}</b>
+                  <div><i style={{ width: `${(100 * x.mu) / muMax}%`, background: s.colores[m] }} /></div>
+                  <b style={{ whiteSpace: 'nowrap' }}><Valor f={ficha}>{conError(x.mu, x.tipoErr ? x.err : NaN, 2, 3).v}{x.tipoErr ? <small className="ayuda"> ± {conError(x.mu, x.err).e}{x.tipoErr === 'EE' ? ' (EE)' : ''}</small> : null}</Valor> <small className="ayuda">(n={x.n})</small>{pocoN || x.respaldo ? <small style={{ color: 'var(--aviso)' }} data-tip={x.respaldo || 'n < 3'}> ⚠</small> : null}</b>
                 </div>
               )
             }) : <p className="ayuda">Sin parámetros todavía.</p>}
-            {muPorCepa.length > 0 && <p className="ayuda" style={{ marginTop: 6 }}>μmax en h⁻¹; tiempo de duplicación = ln 2 / μ̄. {muPorCepa.some((r) => r.unico) ? 'n: pocillos de la curva; ± EE de la pendiente.' : `Media ± DE de n réplicas ${replicaOd(exp.origenOd).tipo}.`}{muPorCepa.some((r) => !r.unico && r.n_curvas < 3) ? ' ⚠ n < 3.' : ''}</p>}
+            {muPorCepa.length > 0 && <p className="ayuda" style={{ marginTop: 6 }}>μ en h⁻¹ · método: {textoMetodoOd(s, muPorCepa)}. {muPorCepa.some((x) => x.tipoErr === 'EE') ? '± EE del ajuste.' : `Media ± DE de n réplicas ${replicaOd(exp.origenOd).tipo}.`}</p>}
           </Mosaico>
         )}
         {ufc && (
           <Mosaico titulo="Curva UFC vs t" accion="Abrir" onAccion={() => s.irA('curvaUfc')} className={od ? '' : 'm-grande'}>
             {seriesUfc.length ? <Grafico series={seriesUfc} yTxt="log₁₀ UFC/mL" alto={od ? 240 : 300} exportar={false} nombre="resumen_ufc" leyenda={!od} />
-              : <p className="ayuda">Todavía no hay conteos.</p>}
+              : <p className="ayuda">Todavía no hay recuentos.</p>}
           </Mosaico>
         )}
         {pasoDatos && (
@@ -184,7 +187,7 @@ export function Resumen({ s }) {
             ) : pasoDatos === 'lecturas' ? (
               <div className="cifra"><b>{filasConOd(exp).length}</b><span>lecturas cargadas{filasConOd(exp).length < exp.manual.filas.length ? ` de ${exp.manual.filas.length} filas` : ''}</span></div>
             ) : (
-              <div className="cifra"><b>{filasConConteo(exp).length}</b><span>réplicas con conteo{filasConConteo(exp).length < exp.ufc.filas.length ? ` de ${exp.ufc.filas.length} filas` : ''}</span></div>
+              <div className="cifra"><b>{filasConConteo(exp).length}</b><span>réplicas con recuento{filasConConteo(exp).length < exp.ufc.filas.length ? ` de ${exp.ufc.filas.length} filas` : ''}</span></div>
             )}
           </Mosaico>
         )}

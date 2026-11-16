@@ -313,7 +313,7 @@ export default function App() {
     const usadas = new Set([...serie.config.filter((c) => !c.EsBlanco).map((c) => c.Muestra), ...(ufcRes?.reps || []).map((r) => r.Muestra)])
     const p = [TIPOS[exp.tipo].corto + (exp.origenOd ? ` · ${ORIGENES[exp.origenOd].titulo}` : ''), `${usadas.size} cepa${usadas.size === 1 ? '' : 's'}`]
     if (exp.origenOd === 'placas') { const l = serie.extra?.lecturas || []; p.push(`${exp.placas.length} tiempos`, `${l.filter((x) => x.Usado).length}/${l.length} lecturas aceptadas`) }
-    if (ufcRes?.hay) p.push(`${ufcRes.reps.filter((r) => r.Conteos > 0).length} conteos de UFC`)
+    if (ufcRes?.hay) p.push(`${ufcRes.reps.filter((r) => r.Conteos > 0).length} recuentos de UFC`)
     p.push(archivoExp ? `archivo «${archivoExp.nombre}» (Ctrl + S guarda)` : 'sin archivo: Ctrl + S para guardarlo', 'copia automática en «Recientes»')
     return p.join(' · ')
   })()

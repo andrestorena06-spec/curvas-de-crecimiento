@@ -10,15 +10,15 @@ import { analizarCurva, finito, media, desvio } from '../calculo/comun/analisis.
 import { dixonQ, opAnalisis } from '../calculo/od/pipeline.js'
 import { detectarCV } from '../calculo/comun/atipicos.js'
 import { detectar } from '../calculo/comun/atipicos.js'
-import { LETRAS, nuevoId, pocillos96, ordenPocillo } from '../comun/utils.js'
+import { LETRAS, fx, nuevoId, pocillos96, ordenPocillo } from '../comun/utils.js'
 
 export const VERSION = 3
 export const CEPAS_DEF = ['L100A1', 'L100A1 Rug', 'L100A1 SCV', 'L101B2', 'L101B2 Rug', 'L201', 'L201 Rug']
 
 export const TIPOS = {
   od: { titulo: 'Curva por OD', corto: 'OD' },
-  ufc: { titulo: 'Curva por conteo UFC/mL', corto: 'UFC/mL' },
-  odufc: { titulo: 'Curva por OD + conteo UFC/mL', corto: 'OD + UFC/mL' },
+  ufc: { titulo: 'Curva por recuento UFC/mL', corto: 'UFC/mL' },
+  odufc: { titulo: 'Curva por OD + recuento UFC/mL', corto: 'OD + UFC/mL' },
 }
 export const ORIGENES = {
   tecan: { titulo: 'Lector Tecan', texto: 'Cinética: el lector mide toda la placa a intervalos cortos y exporta un Excel con una curva por pocillo.' },
@@ -63,7 +63,7 @@ export function caminoOptico(aj, forzar = false) {
 
 export const ufcDef = () => ({ vol: 100, factor: 10, min: 25, max: 250, nd: 8, estimados: true, filas: [],
   primero: 'madre', toma: 100, diluyente: 900, pasos: {} })
-// Serie de diluciones del conteo. primero: 'madre' (la 1.ª columna es la suspensión sin diluir) o 'dilucion'
+// Serie de diluciones del recuento. primero: 'madre' (la 1.ª columna es la suspensión sin diluir) o 'dilucion'
 // (la 1.ª columna ya es la primera dilución). Cada columna que es una dilución se hace pasando `toma` µL a
 // `diluyente` µL: factor del paso = (toma + diluyente) / toma; `pasos[k]` cambia los volúmenes de la columna k.
 // Devuelve, por columna, { k, diluida, toma, diluyente, f (factor del paso), D (dilución total) }.
@@ -127,7 +127,7 @@ export function incorporarExcelsSueltos(placas, excels) {
 // Archivos de versiones anteriores del programa
 //   versión 1 («curvas-crecimiento»): una sesión del lector Tecan (archivo, datos, config, exclusiones y ajustes)
 //   versión 2 («curvas-de-crecimiento» con `exps`): varios experimentos en un archivo; cada uno con modo
-//     od / conteo / ambos y OD del Tecan, de una placa por pocillos o manual (cubeta)
+//     od / recuento / ambos y OD del Tecan, de una placa por pocillos o manual (cubeta)
 // ------------------------------------------------------------
 const sinExtension = (n) => String(n || '').replace(/\.[^.]+$/, '')
 const unicas = (xs) => [...new Set(xs.filter((m) => m !== undefined && m !== null && String(m).trim() !== '').map(String))]
@@ -155,7 +155,7 @@ function desdeExpUnificado(e, global) {
   const tabla = ufcViejo.metodo === 'extendida' ? ufcViejo.tabla : null
   if (origen === 'placas') avisos.push(`«${nombre}»: la OD estaba en una placa leída por pocillos; volvé a cargar los Excel en «OD › Cargar datos».`)
   if (tipo !== 'od' && ufcViejo.metodo !== 'extendida' && (ufcViejo.placasG || []).some((p) => Object.keys(p.conteos || {}).length))
-    avisos.push(`«${nombre}»: los conteos por gota del programa anterior no se pueden convertir; volvé a cargarlos en «UFC › Cargar datos».`)
+    avisos.push(`«${nombre}»: los recuentos por gota del programa anterior no se pueden convertir; volvé a cargarlos en «UFC › Cargar datos».`)
   const cepas = unicas([
     ...(Array.isArray(e.cepas) ? e.cepas : []),
     ...(e.config || []).map((x) => x.Muestra),
@@ -306,7 +306,7 @@ export function placasADatos(placas, aj, exclusiones = {}) {
   const blancoGeneral = conBlanco.length ? media(conBlanco.map((b) => b.valor)) : NaN
   if (aj.corregir_blanco) {
     if (!conBlanco.length) avisos.push('Ninguna placa tiene pocillos de blanco: no se restó blanco.')
-    else blancos.forEach((b) => { if (!finito(b.valor)) avisos.push(`La placa T = ${b.t} h no tiene blanco: se usó el promedio del blanco de las demás placas (${blancoGeneral.toFixed(4)}).`) })
+    else blancos.forEach((b) => { if (!finito(b.valor)) avisos.push(`La placa T = ${b.t} h no tiene blanco: se usó el promedio del blanco de las demás placas (${fx(blancoGeneral, 4)}).`) })
   }
 
   // 2) y 3) lecturas de cada cepa, corregidas y evaluadas por placa
@@ -365,7 +365,7 @@ export function seriesOd(e) {
   const an = anchoEfectivo(r0.datos, e.aj)
   if (an > (Number(e.aj.an_ancho) || 2) + 1e-9) {
     r0.aj = { ...r0.aj, an_ancho: an }
-    r0.avisos = [...r0.avisos, `Las lecturas están cada ~${(an / (Math.max(3, Math.round(Number(e.aj.an_minpts) || 3)) - 1)).toFixed(2).replace('.', ',')} h: para que cada ventana de μmax tenga al menos ${Math.max(3, Math.round(Number(e.aj.an_minpts) || 3))} puntos se usó un ancho de ${an.toFixed(2).replace('.', ',')} h.`]
+    r0.avisos = [...r0.avisos, `Las lecturas están cada ~${fx((an / (Math.max(3, Math.round(Number(e.aj.an_minpts) || 3)) - 1)), 2)} h: para que cada ventana de μmax tenga al menos ${Math.max(3, Math.round(Number(e.aj.an_minpts) || 3))} puntos se usó un ancho de ${fx(an, 2)} h.`]
   }
   return r0
 }
@@ -391,7 +391,7 @@ function seriesOdBase(e) {
 }
 
 // ------------------------------------------------------------
-// UFC: los conteos se cargan por cepa, réplica, tiempo y dilución; aquí se arma lo que espera el motor.
+// UFC: los recuentos se cargan por cepa, réplica, tiempo y dilución; aquí se arma lo que espera el motor.
 // Control de calidad: test Q de Dixon sobre log10(UFC/mL) entre réplicas de la misma cepa y tiempo.
 // ------------------------------------------------------------
 export const claveUfc = (f) => `${f.muestra}|${Number(f.t)}|${Number(f.replica) || 1}`
@@ -439,19 +439,19 @@ export function resultadosUfc(e) {
       // RSD (CV %) sobre UFC/mL: si el grupo supera el límite, sale la réplica más alejada de la media
       const lim = Number(e.aj.ufc_cvmax) || 20
       const d = detectarCV(g.map((r) => r.UFC_mL), lim)
-      if (d.idx !== null) { const r = g[d.idx]; dixon[`${r.Muestra}|${r.T_h}|${r.Replica}`] = `RSD del grupo = ${d.stat.toFixed(1)} % > límite ${lim} % (réplica más alejada de la media, extremo ${d.lado}; sin ella, RSD = ${d.cvSin.toFixed(1)} %).` }
+      if (d.idx !== null) { const r = g[d.idx]; dixon[`${r.Muestra}|${r.T_h}|${r.Replica}`] = `RSD del grupo = ${fx(d.stat, 1)} % > límite ${lim} % (réplica más alejada de la media, extremo ${d.lado}; sin ella, RSD = ${fx(d.cvSin, 1)} %).` }
       return
     }
     if (e.aj.ufc_atip_metodo === 'grubbs') {
       const conf = Number(e.aj.ufc_dixon_conf) || 95
       const d = detectar(g.map((r) => r.log10), { metodo: 'grubbs', conf })
-      if (d.idx !== null && d.idx !== undefined) { const r = g[d.idx]; dixon[`${r.Muestra}|${r.T_h}|${r.Replica}`] = `Test de Grubbs sobre log₁₀: G = ${d.stat.toFixed(3)} > crítico ${d.crit.toFixed(3)} (n = ${d.n}, ${conf} %), extremo ${d.lado}.` }
+      if (d.idx !== null && d.idx !== undefined) { const r = g[d.idx]; dixon[`${r.Muestra}|${r.T_h}|${r.Replica}`] = `Test de Grubbs sobre log₁₀: G = ${fx(d.stat, 3)} > crítico ${fx(d.crit, 3)} (n = ${d.n}, ${conf} %), extremo ${d.lado}.` }
       return
     }
     const d = dixonQ(g.map((r) => r.log10), Number(e.aj.ufc_dixon_conf) || 95)
     if (d) {
       const r = g[d.i]
-      dixon[`${r.Muestra}|${r.T_h}|${r.Replica}`] = `${d.metodo === 'Grubbs' ? 'Test de Grubbs' : 'Test Q de Dixon'} sobre log₁₀: ${d.metodo === 'Grubbs' ? 'G' : 'Q'} = ${d.q.toFixed(3)} > crítico ${d.crit.toFixed(3)} (n = ${d.n}, ${d.conf} %), extremo ${d.lado}.`
+      dixon[`${r.Muestra}|${r.T_h}|${r.Replica}`] = `${d.metodo === 'Grubbs' ? 'Test de Grubbs' : 'Test Q de Dixon'} sobre log₁₀: ${d.metodo === 'Grubbs' ? 'G' : 'Q'} = ${fx(d.q, 3)} > crítico ${fx(d.crit, 3)} (n = ${d.n}, ${d.conf} %), extremo ${d.lado}.`
     }
   })
   // por defecto los sospechosos solo se marcan; se excluyen solos únicamente si el usuario eligió «Excluir»
@@ -519,7 +519,7 @@ export function analizarPorCepa(proc, aj, ventanas, modo = 'media') {
 }
 
 // ------------------------------------------------------------
-// Cepas: renombrar en todo el experimento (lista, pocillos, placas, lecturas, conteos, colores y claves)
+// Cepas: renombrar en todo el experimento (lista, pocillos, placas, lecturas, recuentos, colores y claves)
 // ------------------------------------------------------------
 export function usosDeCepa(e, c) {
   return e.tecan.config.filter((x) => x.Muestra === c).length

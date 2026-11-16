@@ -25,7 +25,7 @@ export function TablaMediaTiempo({ titulo, filas, unidad, etqErr, fmt, ficha, no
           <th className="num" data-tip={`${etqErr} de ${unidad} de las réplicas (se elige en Revisión › Tipo de error)\nEEM e IC 95 % solo con 3 o más réplicas`}>{etqErr} ({unidad})</th>
           <th className="num" data-tip="Media − error a media + error">Rango ({unidad})</th>
           <th className="num" data-tip="log₁₀ de la media (lo que se grafica en escala log₁₀)">log₁₀ media</th>
-          <th className="num" data-tip="log₁₀(media − error) a log₁₀(media + error): la misma barra, con el eje en log₁₀">Rango log₁₀</th>
+          <th className="num" data-tip={'log₁₀(media − error) a log₁₀(media + error): la misma barra, con el eje en log₁₀\n«≤»: media − error ≤ 0, sin límite inferior en log₁₀'}>Rango log₁₀</th>
         </tr></thead>
         <tbody>{filas.map((f) => {
           const ok = finito(f.e)
@@ -38,7 +38,7 @@ export function TablaMediaTiempo({ titulo, filas, unidad, etqErr, fmt, ficha, no
               <td className="num">{ok ? c(f, 'error', `± ${fmt(f.e)}`) : f.n > 1 ? 'n < 3' : '–'}</td>
               <td className="num">{ok ? c(f, 'rango', `${fmt(f.m - f.e)} – ${fmt(f.m + f.e)}`) : '–'}</td>
               <td className="num">{c(f, 'log', fl(L(f.m)))}</td>
-              <td className="num">{ok ? c(f, 'rangolog', `${fl(L(f.m - f.e))} – ${fl(L(f.m + f.e))}`) : '–'}</td>
+              <td className="num">{ok ? c(f, 'rangolog', finito(L(f.m - f.e)) ? `${fl(L(f.m - f.e))} – ${fl(L(f.m + f.e))}` : finito(L(f.m + f.e)) ? `≤ ${fl(L(f.m + f.e))}` : '–') : '–'}</td>
             </tr>
           )
         })}</tbody>

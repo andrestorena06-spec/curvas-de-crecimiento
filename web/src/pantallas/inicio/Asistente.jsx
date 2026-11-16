@@ -78,9 +78,9 @@ export function Asistente({ onCrear, onCancelar, hayExperimento }) {
         <div className="opciones">
           <Opcion on={tipo === 'od'} apagada={tipo && tipo !== 'od'} onClick={() => elegirTipo('od')} Ilus={IlusOD} titulo="Curva por OD"
             texto="Densidad óptica en el tiempo: μmax, tiempo de duplicación, lag, K y AUC." />
-          <Opcion on={tipo === 'ufc'} apagada={tipo && tipo !== 'ufc'} onClick={() => elegirTipo('ufc')} Ilus={IlusUFC} titulo="Curva por conteo UFC/mL"
+          <Opcion on={tipo === 'ufc'} apagada={tipo && tipo !== 'ufc'} onClick={() => elegirTipo('ufc')} Ilus={IlusUFC} titulo="Curva por recuento UFC/mL"
             texto="Colonias contadas en diluciones seriadas: UFC/mL con IC 95 % y crecimiento." />
-          <Opcion on={tipo === 'odufc'} apagada={tipo && tipo !== 'odufc'} onClick={() => elegirTipo('odufc')} Ilus={IlusAmbos} titulo="OD + conteo UFC/mL"
+          <Opcion on={tipo === 'odufc'} apagada={tipo && tipo !== 'odufc'} onClick={() => elegirTipo('odufc')} Ilus={IlusAmbos} titulo="OD + recuento UFC/mL"
             texto="Las dos mediciones de las mismas muestras, combinadas y con calibración OD ↔ UFC." />
         </div>
       </Etapa>
@@ -136,7 +136,7 @@ export function Asistente({ onCrear, onCancelar, hayExperimento }) {
             <div className="fila" style={{ marginBottom: 16 }}>
               <input value={nuevaCepa} placeholder="Agregar cepa…" onChange={(e) => setNuevaCepa(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') agregarCepa() }} style={{ width: 240 }} />
               <button onClick={agregarCepa}><Icono n="mas" size={15} />Agregar</button>
-              <span className="ayuda">También podés agregar cepas después, al definir la placa o los conteos.</span>
+              <span className="ayuda">También podés agregar cepas después, al definir la placa o los recuentos.</span>
             </div>
             <div className="fila" style={{ justifyContent: 'flex-end' }}>
               <button className="primario" onClick={() => onCrear({ nombre: nombre.trim() || 'Experimento', tipo, origenOd: necesitaOrigen ? origen : null, cond, cepas })}>

@@ -1,4 +1,3 @@
-import { METODOS_ATIPICOS } from '../../calculo/comun/atipicos.js'
 import { useOpcion } from '../../ui/opciones.js'
 import { useMemo, useState } from 'react'
 import { desvio, finito, media } from '../../calculo/comun/analisis.js'
@@ -6,14 +5,16 @@ import { clavePunto, nombreReplica, r3 } from '../../calculo/od/pipeline.js'
 import { useTema, rellenoPocillo } from '../../estilo/tema.js'
 import { Campo, Check, Encabezado, Icono, Modal, Num, Seg, Sel, Vacio } from '../../ui/base.jsx'
 import { Grafico } from '../../ui/graficos/grafico.jsx'
-import { LETRAS, fx, ordenPocillo } from '../../comun/utils.js'
+import { LETRAS, fx } from '../../comun/utils.js'
 import { VistaCalidadPlacas, ZoomTiempo } from './CalidadPlacas.jsx'
-import { tramoOdRige, zonasVentana } from './FasesCepa.jsx'
+import { zonasVentana } from './FasesCepa.jsx'
+import { tramoOdRige } from '../../calculo/od/parametros.js'
 import { GrupoModeloOd } from './ModeloOd.jsx'
 import { GrupoOutliers } from '../../ui/outliers.jsx'
 import { GrupoMostrar, GrupoTipoError, conEtiquetas, textoMostrar, useMostrar } from '../../ui/mostrar.jsx'
-import { mediaPorTiempo } from './Curva.jsx'
+import { mediaPorTiempo } from '../../calculo/od/medias.js'
 import { BotonCinta, Cajon, Cinta, Grupo, MenuCinta, Mosaico, OpcionesCinta, SeccionMenu } from '../../ui/cinta.jsx'
+import { PanelPersonalizar } from '../../ui/graficos/personalizar.jsx'
 
 const CHIP_CAT = { OK: 'ok', Sospechoso: 'peligro', Divergentes: 'aviso', Ruidoso: 'aviso', Excluido: '', 'Sin réplicas': 'acento', Blanco: '', 'Sin datos': '' }
 // en cinéticas (Tecan) el test entre réplicas compara el área bajo la curva de cada réplica y marca la réplica entera
@@ -286,7 +287,7 @@ function TablaValoresOd({ s }) {
   const chip = (e, sale) => (sale || !sigue(e) ? 'peligro' : e === 'En el análisis' ? 'ok' : 'aviso')
   return (
     <div className="tabla-scroll alta"><table className="tabla">
-      <thead><tr><th>Cepa</th><th className="num">T (h)</th><th className="num">{tecan ? 'Pocillo' : 'Réplica'}</th><th className="num">OD</th><th>Estado</th>
+      <thead><tr><th>Cepa</th><th className="num">t (h)</th><th className="num">{tecan ? 'Pocillo' : 'Réplica'}</th><th className="num">OD</th><th>Estado</th>
         <th className="num">Media</th><th className="num">DE</th><th className="num">CV %</th><th className="num">n</th><th /></tr></thead>
       <tbody>{lista.map((g) => {
         const v = (enAnalisis.get(g.m + '|' + r3(g.t)) || []).filter(finito)
@@ -316,6 +317,7 @@ export function Calidad({ s }) {
   const [abierto, setAbierto] = useState(null)
   const [ajustes, setAjustes] = useState(false)
   const [mo, setMo] = useMostrar('calidadCubeta', { puntos: false, replicas: true })
+  const [pers, setPers] = useState(false)   // cajón «Personalizar gráfico» (vista por cepa: los gráficos de cada cepa)
   const [errorOd, setErrorOd] = useOpcion('curva.error', 'sd')
   const { pre, exp, setAj } = s
   const aj = exp.aj
@@ -355,11 +357,16 @@ export function Calidad({ s }) {
                 <Campo label="Dif. AUC con 2 réplicas (%)"><Num value={aj.pocillo_div} onChange={(v) => setAj('pocillo_div', v)} ancho={64} /></Campo>
               </SeccionMenu>}
           </GrupoOutliers>
+          {true && (
+            <Grupo titulo="Gráfico">
+              <BotonCinta icono="editar" texto="Personalizar" activo={pers} onClick={() => setPers(!pers)} tip={vista === 'cepas' && exp.origenOd !== 'tecan' ? 'Gráficos de cada cepa: títulos, tamaños de letra, grosores, eje Y, fondo y colores' : 'Gráfico de cada ' + (exp.origenOd === 'tecan' ? 'pocillo' : 'serie') + ' (se abre con un clic en la placa o la tabla): títulos, tamaños de letra, grosores, eje Y y fondo'} />
+            </Grupo>
+          )}
           <Grupo titulo="Vista">
             <OpcionesCinta valor={vista} onChange={setVista} opciones={exp.origenOd === 'tecan' ? [['placa', 'Placa', null, 'placa'], ['tabla', 'Tabla', null, 'tabla']] : [['cepas', 'Por cepa', null, 'curva'], ['tabla', 'Tabla', null, 'tabla']]} />
           </Grupo>
           <Grupo titulo="Detalle">
-            <MenuCinta simbolo="OD₀" texto={<>OD<sub>0</sub></>} ancho={300} tip={'OD inicial\nNivel de partida para el lag y las generaciones'}>
+            <MenuCinta simbolo="OD₀" texto="OD₀" ancho={300} tip={'OD inicial\nNivel de partida para el lag y las generaciones'}>
               <SeccionMenu titulo="Cálculo de OD₀"><Sel value={aj.od0_metodo} onChange={(v) => setAj('od0_metodo', v)} opciones={[['auto', 'Automática (meseta inicial, tres fases)'], ['primeros', 'Media de los primeros N puntos']]} /></SeccionMenu>
               <SeccionMenu titulo="N puntos iniciales"><Num value={aj.n_od0} onChange={(v) => setAj('n_od0', v)} ancho={70} /></SeccionMenu>
             </MenuCinta>
@@ -377,6 +384,7 @@ export function Calidad({ s }) {
           </Mosaico>)}
         </>)
       )}
+      <Cajon titulo="Personalizar gráfico" abierto={pers && !s.porCepa} onClose={() => setPers(false)}><PanelPersonalizar s={s} id={vista === 'cepas' && exp.origenOd !== 'tecan' ? 'cepaCubeta' : 'pocillo'} /></Cajon>
       <Cajon titulo="Más ajustes de la revisión" abierto={ajustes && !s.porCepa} onClose={() => setAjustes(false)}><AjustesCalidad s={s} /></Cajon>
       {abierto && pre && !pre.error && <ModalPocillo s={s} p={abierto} onClose={() => setAbierto(null)} />}
     </div>

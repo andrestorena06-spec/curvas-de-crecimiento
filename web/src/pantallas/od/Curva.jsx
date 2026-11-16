@@ -4,45 +4,23 @@
 // ============================================================
 import { useMemo, useState } from 'react'
 import { useOpcion } from '../../ui/opciones.js'
-import { desvio, finito, media } from '../../calculo/comun/analisis.js'
+import { finito, media } from '../../calculo/comun/analisis.js'
 import { etiquetaOd, nombreReplica } from '../../calculo/od/pipeline.js'
-import { Encabezado, Icono, Num, Sel, Vacio } from '../../ui/base.jsx'
+import { Encabezado, Vacio } from '../../ui/base.jsx'
 import { Grafico } from '../../ui/graficos/grafico.jsx'
-import { fs, fx, tCuantil } from '../../comun/utils.js'
-import { BotonCinta, Cajon, CampoCinta, Cinta, Grupo, Mosaico, OpcionesCinta } from '../../ui/cinta.jsx'
+import { fs, fx } from '../../comun/utils.js'
+import { BotonCinta, Cajon, Cinta, Grupo, Mosaico, OpcionesCinta } from '../../ui/cinta.jsx'
 import { PanelPersonalizar } from '../../ui/graficos/personalizar.jsx'
 import { GrupoMostrar, conEtiquetas, textoMostrar, useMostrar } from '../../ui/mostrar.jsx'
 import { SelectorCepas, cepasOcultas } from '../../ui/cepas.jsx'
 import { fichaMediaTiempo } from '../../fichas/index.js'
-import { ParametrosOd, ajustesOd, resumenPorCepa } from './Parametros.jsx'
-import { tramoOdRige } from './FasesCepa.jsx'
+import { ParametrosOd } from './Parametros.jsx'
+import { ajustesOd, resumenPorCepa, tramoOdRige } from '../../calculo/od/parametros.js'
 import { GrupoModeloOd, useModeloOd } from './ModeloOd.jsx'
 import { MODELOS_UFC, fraccionExp, lineasMedia } from '../../calculo/ufc/index.js'
 import { TablaMediaTiempo } from '../../ui/tablaMedia.jsx'
-import { errorElegido, resumenReplicas } from '../../calculo/comun/estadistica.js'
 import { replicaOd } from '../../datos/experimento.js'
-
-// Media ± error de las réplicas en cada tiempo, SIEMPRE con los valores lineales (el mismo cálculo que las UFC/mL).
-// En escala log (tr ≠ identidad) el valor es tr(media) y la barra va de tr(media − error) a tr(media + error): la misma
-// barra que en lineal, con el eje en log. EEM e IC 95 % solo con 3 o más réplicas.
-export function mediaPorTiempo(series, tr, error) {
-  const por = new Map()
-  series.forEach((w) => w.t.forEach((t, i) => { const v = w.y[i]; if (finito(v)) { if (!por.has(t)) por.set(t, []); por.get(t).push(v) } }))
-  const lineal = tr(2) === 2 && tr(0.5) === 0.5
-  return [...por.keys()].sort((a, b) => a - b).map((t) => {
-    const est = resumenReplicas(por.get(t)), n = est.n, mL = est.m, sd = est.sd
-    const e = errorElegido(est, error).e
-    const lo = mL - e, hi = mL + e
-    return { t, n, sd, mLin: mL, eLin: e, m: tr(mL), lo: finito(e) ? tr(lo) : NaN, hi: finito(e) ? tr(hi) : NaN, err: lineal ? e : NaN, rango: !lineal }
-  })
-}
-// texto del error sobre el punto: «± error» en lineal; «[inf – sup]» en log
-export const textoErrMedia = (q, d = 3) => (q.rango ? (finito(q.hi) ? `[${finito(q.lo) ? fx(q.lo, d) : '–'} – ${fx(q.hi, d)}]` : '') : finito(q.err) ? `± ${fx(q.err, d)}` : '')
-// el error de un punto en el formato de lineasMedia (globos de OD y UFC con el mismo texto)
-export const egDeMedia = (q, etq) => {
-  const L = (x) => (finito(x) && x > 0 ? Math.log10(x) : NaN)
-  return { etq, e: q.eLin, lo: q.mLin - q.eLin, hi: q.mLin + q.eLin, mLog: L(q.mLin), loLog: L(q.mLin - q.eLin), hiLog: L(q.mLin + q.eLin) }
-}
+import { mediaPorTiempo, textoErrMedia, egDeMedia } from '../../calculo/od/medias.js'
 
 // Sin curvas procesadas se muestra el aviso ANTES de los hooks de la pantalla (si no, React falla al pasar de «sin datos» a «con datos»)
 export function Curva({ s }) {
@@ -201,13 +179,13 @@ OD = ${fx(10 ** a.c.pred10(x), 4)}` })) })
         </Grupo>
         {!s.porCepa && modeloOd !== 'no' && (
           <Grupo titulo="Ajuste">
-            <OpcionesCinta valor={ajusteRep ? 'rep' : 'cepa'} onChange={(v) => setAjusteRep(v === 'rep')} opciones={[['cepa', 'Por cepa', 'x̄', null, 'Un ajuste por cepa con todas sus réplicas'], ['rep', 'Por réplica', '⋮⋮', null, 'Un ajuste por réplica: cada una con su curva, su ecuación y sus parámetros, y la media ± DE de la cepa']]} />
+            <OpcionesCinta valor={ajusteRep ? 'rep' : 'cepa'} onChange={(v) => setAjusteRep(v === 'rep')} opciones={[['cepa', 'Por cepa', 'x̄', null, 'Un ajuste por cepa, con la media de sus réplicas en cada tiempo'], ['rep', 'Por réplica', '⋮⋮', null, 'Un ajuste por réplica: cada una con su curva, su ecuación y sus parámetros, y la media ± DE de la cepa']]} />
           </Grupo>
         )}
         <GrupoModeloOd s={s} botonFases={<BotonCinta simbolo="▥" texto="Fases" activo={fases && unaCepa} deshabilitado={!unaCepa} onClick={() => setFases(!fases)} tip={unaCepa ? 'Mostrar u ocultar las fases (lag, exponencial, estacionaria) de la cepa\nCon Baranyi y Roberts o Huang las fases las fija el modelo; con Linealizar log₁₀ el tramo se elige en «Revisión de la OD», con «Fases…» en la curva de cada cepa' : 'Las fases son distintas en cada cepa: dejá una sola cepa visible para verlas'} />} />
         {s.porCepa && (
-          <Grupo titulo="Curva de cada cepa">
-            <OpcionesCinta valor={s.modoCurva} onChange={(v) => s.setAj('placas_curva', v)} opciones={[['puntos', 'Sin promediar', '⋮', null, 'Por defecto: μmax, su error, OD₀, lag y el modelo salen de la regresión con todos los pocillos; K y AUC, de la media'], ['media', 'Promediada', 'x̄', null, 'Los parámetros se calculan sobre la media de los pocillos aceptados en cada tiempo']]} />
+          <Grupo titulo="Ventana de μmax">
+            <OpcionesCinta valor={s.modoCurva} onChange={(v) => s.setAj('placas_curva', v)} opciones={[['puntos', 'Sin promediar', '⋮', null, 'Por defecto: μmax de la ventana, su error, OD₀ y lag salen de la regresión con todos los pocillos; K y AUC, de la media. Baranyi y Roberts y Huang se ajustan siempre a la media de cada tiempo'], ['media', 'Promediada', 'x̄', null, 'Los parámetros se calculan sobre la media de los pocillos aceptados en cada tiempo']]} />
           </Grupo>
         )}
         <Grupo titulo="Gráfico">

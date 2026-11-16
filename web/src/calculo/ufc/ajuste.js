@@ -2,9 +2,10 @@
 // Crecimiento a partir de los recuentos: recta de log₁₀ (fase exponencial), Baranyi y Roberts y Huang,
 // con las variantes de DMFit (sin lag, sin meseta). Un solo ajuste por cepa para todas las pantallas.
 // ============================================================
-import { finito, media, regLineal } from '../comun/analisis.js'
+import { cuotaDe, finito, media, regLineal, vecinasPorCuota } from '../comun/analisis.js'
 import { baranyiF, erroresAjuste, huangF, levenbergMarquardt } from '../comun/modelos.js'
 import { centroLog10, centroUfc, sciUfc } from './conteo.js'
+import { fx } from '../../comun/utils.js'
 
 // ---------- crecimiento a partir de los recuentos: modelos de DMFit (ComBase) ----------
 // Se ajustan a TODOS los puntos (ninguno se descarta para mejorar el R²), por mínimos cuadrados sobre ln(UFC/mL):
@@ -26,7 +27,6 @@ export const mcurvUfc = (aj) => { const v = Number(aj?.ufc_mcurv); return finito
 const NPAR = { lineal: 2, baranyi: 4, huang: 4 }
 const MIN_T = { lineal: 2, baranyi: 4, huang: 4 }
 
-const f2 = (x) => (finito(x) ? x.toFixed(2).replace('.', ',') : '–')
 
 // t (h) y ly = ln(UFC/mL) de cada punto. ymaxFijo10: N máx en log₁₀ fijado por el usuario (solo Baranyi y Roberts).
 // mcurv: curvatura m del Baranyi y Roberts (1 por defecto).
@@ -71,15 +71,13 @@ export function ajusteClasico(t, ly, op = {}) {
   const ventC = vent.filter((v) => v.fin - v.ini >= 0.8 * anchoMax - 1e-9)
   let cand = manual ? [manual] : ventC.filter((v) => v.r2 >= r2min)
   if (!manual && !cand.length) cand = vent.filter((v) => v.r2 >= r2min)
-  if (!cand.length) { cand = vent; avisos.push(`Ninguna ventana alcanza R² ≥ ${r2min.toFixed(2).replace('.', ',')}: se usó la de mayor pendiente.`) }
+  if (!cand.length) { cand = vent; avisos.push(`Ninguna ventana alcanza R² ≥ ${fx(r2min, 2)}: se usó la de mayor pendiente.`) }
   let w = cand.reduce((m, v) => (v.b > m.b ? v : m), cand[0])
   // quota (como fit_easylinear de growthrates): las ventanas contiguas con pendiente ≥ quota · máxima se suman a la mejor y se reajusta la recta
   let ampliada = false
   const quota = finito(op.quota) && op.quota > 0 && op.quota < 1 ? op.quota : NaN
   if (!manual && finito(quota) && w.b > 0) {
-    let L = vent.indexOf(w), R = L
-    while (L > 0 && vent[L - 1].b >= quota * w.b) L--
-    while (R < vent.length - 1 && vent[R + 1].b >= quota * w.b) R++
+    const [L, R] = vecinasPorCuota(vent.map((v) => v.b), vent.indexOf(w), quota)
     const ini = vent[L].ini, fin = vent[R].fin
     if (ini < w.ini - 1e-9 || fin > w.fin + 1e-9) {
       const x = [], y = []
@@ -136,7 +134,7 @@ export function ajusteDmfit(t, ly, modelo = 'baranyi', ymaxFijo10 = NaN, mcurv =
   if (nT < MIN_T[modelo]) return { ...vacio, motivo: `El modelo ${MODELOS_UFC[modelo]} necesita al menos ${MIN_T[modelo]} tiempos con datos (hay ${nT}).` }
   // N máx fijado: tiene que estar por encima de todo lo medido (si no, la curva no puede pasar por los datos)
   if (finito(fijo) && fijo <= Math.max(...yy)) {
-    return { ...vacio, motivo: `El N máx fijado (${f2(ymaxFijo10)} log₁₀) no es mayor que el máximo observado (${f2(Math.max(...yy) / Math.LN10)} log₁₀): no se puede usar. Poné un N máx mayor o dejalo vacío.` }
+    return { ...vacio, motivo: `El N máx fijado (${fx(ymaxFijo10, 2)} log₁₀) no es mayor que el máximo observado (${fx(Math.max(...yy) / Math.LN10, 2)} log₁₀): no se puede usar. Poné un N máx mayor o dejalo vacío.` }
   }
   const mx = media(tt), my = media(yy)
   let sxx = 0, sxy = 0
@@ -253,8 +251,9 @@ export function ajusteDmfit(t, ly, modelo = 'baranyi', ymaxFijo10 = NaN, mcurv =
   if (!convergio) avisos.push('El ajuste no cumplió el criterio de convergencia en ningún punto de partida: se muestra el mejor intento; tomá los parámetros con cautela.')
   if (limites.length) avisos.push(`Parámetros en el límite permitido (${limites.join(', ')}): ese valor no es un óptimo libre del ajuste.`)
   if (gl <= 1 || nT <= k) avisos.push(`Pocos grados de libertad (n − p = ${n} − ${k} = ${gl}${nT < n ? `; ${nT} tiempos distintos` : ''}): con tan pocos puntos por parámetro el modelo pasa casi por todos los datos y sus parámetros quedan mal determinados; los errores estándar pueden ser engañosos.`)
+  else if (gl <= 3) avisos.push(`Pocos grados de libertad (n − p = ${n} − ${k} = ${gl}): los parámetros quedan poco determinados, sus intervalos son anchos y un solo punto puede cambiarlos.`)
   if (!EE && gl > 0) avisos.push('No se pudieron calcular los errores estándar de los parámetros: algunos no están determinados por los datos (probá fijar el lag o N máx).')
-  else if (finito(corrMuLag) && Math.abs(corrMuLag) > 0.95) avisos.push(`μ y λ correlacionados (r = ${corrMuLag.toFixed(2).replace('.', ',')}); fijar el lag estabiliza μ.`)
+  else if (finito(corrMuLag) && Math.abs(corrMuLag) > 0.95) avisos.push(`μ y λ correlacionados (r = ${fx(corrMuLag, 2)}); fijar el lag estabiliza μ.`)
   const out = {
     ok: finito(par.mu), modelo, n, nT, k, gl, pred10: (x) => pred(x) / L, mcurv: mc, convergio, avisos,
     mu, rate: mu / L, td_h: mu > 0 ? Math.LN2 / mu : NaN, lag_h: lag, h0,
@@ -299,9 +298,8 @@ export const nmaxFijado = (aj) => { const v = predDe(aj).nmax; return v === '' |
 // parámetros, la curva, la predicción y las fases de la calibración: μ y λ son los mismos en todas las pantallas.
 // ventana del modelo Linealizar log₁₀: la de «μmax por ventana deslizante» (an_ancho, an_minpts, an_r2)
 // ampliar la ventana con las vecinas de pendiente ≥ quota × la máxima (aj.an_quota en %, por defecto 95; 0 = no ampliar)
-export const cuotaDe = (aj) => { const v = aj?.an_quota === undefined || aj?.an_quota === '' ? 95 : Number(aj.an_quota); return finito(v) && v > 0 && v < 100 ? v / 100 : NaN }
+export { cuotaDe }
 const opClasico = (aj) => ({ ancho: Number(aj?.an_ancho) || 2, minpts: Number(aj?.an_minpts) || 3, r2min: Number(aj?.an_r2) || 0.95, quota: cuotaDe(aj) })
-export const opClasicoDe = opClasico
 const opClasicoCepa = (aj) => ({ ...opClasico(aj), lagFijo: lagFijoUfc(aj) })
 const cacheAjuste = new WeakMap()
 export function ajusteCepaUfc(ufcRes, m, aj) {
@@ -321,7 +319,7 @@ export function ajusteCepaUfc(ufcRes, m, aj) {
 }
 
 // Tiempos (o réplicas) de una cepa que no entran al ajuste de crecimiento porque no tienen un valor > 0:
-// 0 colonias (por debajo del límite de detección) o conteos incontables. No se descartan en silencio.
+// 0 colonias (por debajo del límite de detección) o recuentos incontables. No se descartan en silencio.
 export function puntosExcluidosUfc(ufcRes, m, aj) {
   const out = []
   ufcRes.res.filter((r) => r.Muestra === m && !(finito(r.UFC_mL) && r.UFC_mL > 0)).sort((a, b) => a.T_h - b.T_h).forEach((r) => {
@@ -455,3 +453,5 @@ export function curvaUfc(ufcRes, m, aj) {
   if (!c.ok) return { ok: false, motivo: c.motivo }
   return { ok: true, puntos: Array.from({ length: 121 }, (_, i) => c.t0 + ((c.t1 - c.t0) * i) / 120).map((x) => ({ x, y: c.pred10(x) })) }
 }
+// el ajuste de cada cepa con recuentos: [{ Muestra, c }]
+export const crecimientoPorCepa = (ufcRes, aj) => [...new Set(ufcRes.res.map((r) => r.Muestra))].map((m) => ({ Muestra: m, c: crecimientoUfc(ufcRes, m, aj) }))

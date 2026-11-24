@@ -25,7 +25,8 @@ Abrir en línea: **https://andrestorena06-spec.github.io/curvas-de-crecimiento/*
 - **Cada número muestra su cálculo**: un clic abre la fórmula y la cuenta (en Baranyi y Huang, el resultado del ajuste en ln y el paso a log₁₀).
 - **OD + UFC**: ambas curvas con doble eje y calibración OD ↔ UFC/mL (desde 2 pares; el error y el intervalo de predicción necesitan 3).
 - **Formato de publicación**: tablas de resultados de tres líneas y gráficos con ejes de marcas hacia afuera, listos para un informe.
-- **Gráficos personalizables** (textos, tamaños, ejes, colores de las cepas, fondo blanco) y exportación PNG/SVG; tablas a Excel.
+- **Gráficos personalizables** (textos, tamaños, ejes, escala × 10ⁿ del eje en UFC/mL, colores de las cepas, fondo blanco) y exportación PNG/SVG; tablas a Excel.
+- **Copiar tabla**: cada tabla se copia con formato de publicación (tres líneas, Arial 10) para pegar en Word o PowerPoint; en Excel llega como celdas.
 - **Métodos**: descripción completa de los cálculos y texto para el informe.
 - **Resumen** con el avance del análisis y una lista «Para revisar» (avisos con acceso directo a la pantalla que corresponde).
 - **Guardar** escribe sobre el archivo abierto (Chrome y Edge; Ctrl + S) y **Guardar como** hace una copia (Ctrl + Mayús + S).

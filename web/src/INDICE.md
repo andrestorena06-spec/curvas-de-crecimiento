@@ -35,6 +35,7 @@ El registro está en `app/menu.js` (`PANTALLAS`, `GRUPOS`, `pasosDe`). Para agre
 | UFC | Curva | `pantallas/ufc/CurvaUfc.jsx`, `ParamUfc.jsx` | `calculo/ufc/ajuste.js` | `fichas/ufc.js` |
 | — | OD ↔ UFC | `pantallas/calibracion/Combinado.jsx` | `calculo/calibracion/pares.js`, `calibracion.js` | `fichas/calibracion.js` |
 | Informe | Métodos | `pantallas/informe/Metodos.jsx` | un paso por cálculo: ecuación (`ui/mat.jsx`), ajustes activos y vínculo a su tabla de Datos (mismo `id` que `tablasDe`) | — |
+|  |  | **Métodos describe el algoritmo con sus constantes** (ventanas, cuota, límites, valores iniciales, criterios de convergencia, variantes). Si cambia algo en `calculo/comun/analisis.js` (`analizarCurva`, `ventanasLn`, `od0TresFases`), `calculo/ufc/ajuste.js` (`ajusteDmfit`, `ajusteClasico`) o `calculo/comun/modelos.js` (`levenbergMarquardt`, `erroresAjuste`), hay que actualizar los pasos «mumax» y «modelos» de `pantallas/informe/Metodos.jsx`. |  |  |
 | Informe | Datos | `pantallas/informe/Datos.jsx` → `tablasDe` (una tabla por cálculo; la tabla abierta es la opción `datos.tabla`) | todas las tablas; `datos/excel.js` | — |
 
 ## Grupos comunes de la cinta

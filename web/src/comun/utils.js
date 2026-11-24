@@ -67,6 +67,38 @@ export function conError(valor, error, cifras = 2, sinError = 4) {
 const SUPER = { '-': '⁻', '−': '⁻', '.': '·', 0: '⁰', 1: '¹', 2: '²', 3: '³', 4: '⁴', 5: '⁵', 6: '⁶', 7: '⁷', 8: '⁸', 9: '⁹' }
 // texto en superíndice (exponentes): 5 → ⁵, -3 → ⁻³
 export const superindice = (t) => String(t).replace(/[-−.0-9]/g, (c) => SUPER[c])
+// Potencia de 10 del eje Y en escala lineal (UFC/mL × 10ⁿ): la elegida en «Personalizar» (estilo.potY) o, si está en
+// automático, la del mayor valor. Rótulo: «UFC/mL (× 10⁹)».
+export const potenciaEje = (estilo, maximo) => {
+  const v = estilo?.potY
+  if (v !== undefined && v !== '' && v !== null && fin(Number(v))) return Math.round(Number(v))
+  return fin(maximo) && maximo > 0 ? Math.floor(Math.log10(maximo)) : 0
+}
+export const rotuloPotencia = (unidad, pot) => (pot ? `${unidad} (× 10${superindice(pot)})` : unidad)
+// Un número positivo en base 10: 10⁻² si es una potencia exacta, 8 × 10⁻³ si no (diluciones y factores).
+export function potencia10(x, cifras = 3) {
+  if (!fin(x) || !(x > 0)) return '–'
+  let e = Math.floor(Math.log10(x) + 1e-12), m = x / 10 ** e
+  if (Number(m.toPrecision(cifras)) >= 10) { m /= 10; e += 1 }
+  return Math.abs(m - 1) < 1e-9 ? `10${superindice(e)}` : `${fs(m, cifras)} × 10${superindice(e)}`
+}
+// Valor ± incertidumbre con el MISMO multiplicador (la potencia de 10 del valor) y los MISMOS decimales (los que dejan
+// la incertidumbre con 2 cifras significativas): 1,00 × 10⁵ ± 1,2 × 10⁶ → (1 ± 12) × 10⁵. Devuelve { v, e, pot, d }.
+export function parCientifico(valor, error, cifras = 2) {
+  if (!fin(valor)) return { v: '–', e: '', pot: 0, d: 0 }
+  const ref = valor !== 0 ? Math.abs(valor) : fin(error) && error > 0 ? error : 1
+  const pot = Math.floor(Math.log10(ref) + 1e-12), k = 10 ** pot
+  const q = conError(valor / k, fin(error) && error > 0 ? error / k : NaN, cifras, 3)
+  const d = q.e ? (q.v.split(',')[1] || '').length : NaN
+  return { ...q, pot, d }
+}
+export const porPotencia = (txt, pot) => (pot ? `${txt} × 10${superindice(pot)}` : txt)
+// texto «(v ± e) × 10ⁿ», «v × 10ⁿ» o «± e × 10ⁿ» según qué se muestre
+export function textoPar(p, conValor = true, conError = true) {
+  if (conValor && conError && p.e) return p.pot ? `(${p.v} ± ${p.e}) × 10${superindice(p.pot)}` : `${p.v} ± ${p.e}`
+  if (conValor) return porPotencia(p.v, p.pot)
+  return p.e ? porPotencia(`± ${p.e}`, p.pot) : ''
+}
 // Notación científica: la ÚNICA del programa (2,76 × 10⁵). De 0,001 a 9999 se escribe el número tal cual.
 export function sci(x, d = 2) {
   if (!fin(x)) return '–'

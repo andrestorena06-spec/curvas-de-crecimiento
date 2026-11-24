@@ -9,16 +9,16 @@ import { detectarCV } from '../../calculo/comun/atipicos.js'
 import { desvio, media } from '../../calculo/comun/analisis.js'
 import { Campo, Encabezado, Icono, navegarTabla, Num, Sel, Seg } from '../../ui/base.jsx'
 import { BotonCinta, CampoCinta, Cinta, Grupo } from '../../ui/cinta.jsx'
-import { fin, fx, nuevoId, sci, superindice, tiemposDeSerie, textoTiemposSerie, siguienteReplica } from '../../comun/utils.js'
+import { fin, fx, nuevoId, sci, tiemposDeSerie, textoTiemposSerie, siguienteReplica, potencia10 } from '../../comun/utils.js'
 
 // concentración relativa a la suspensión original, en base 10 (10⁻³) y como fracción (1/1000)
-export const base10 = (D) => { if (!(D > 0)) return '—'; if (D === 1) return '10⁰'; const x = -Math.log10(D); const r = Math.round(x); return Math.abs(x - r) < 1e-9 ? `10${superindice(String(r))}` : '' }   // potencia de 10 solo si es exacta (con factor 5 se muestra la fracción)
+export const base10 = (D) => (!(D > 0) ? '—' : D === 1 ? '10⁰' : potencia10(1 / D))   // 1/125 → 8 × 10⁻³; 1/100 → 10⁻²
 const redondo = (x) => (Math.abs(x - Math.round(x)) < 1e-9 ? Math.round(x) : Number(x.toPrecision(4)))
 export const fraccion = (D) => (!(D > 0) ? '—' : D === 1 ? '1 (sin diluir)' : `1/${String(redondo(D)).replace(/\B(?=(\d{3})+(?!\d))/g, '\u202F')}`)
 // número ordinal de la dilución (1ra, 2da, 3ra…), contando solo las columnas diluidas
 const SUF = { 1: 'ra', 2: 'da', 3: 'ra', 4: 'ta', 5: 'ta', 6: 'ta', 7: 'ma', 8: 'va', 9: 'na', 10: 'ma', 11: 'ra', 12: 'da' }
 export const ordinal = (d) => (d?.diluida ? `${d.n}${SUF[d.n] || 'a'}` : '')
-export const etqD = (d) => (!d ? '' : !d.diluida ? 'Sin diluir' : [ordinal(d), base10(d.D) || fraccion(d.D)].join(' · '))
+export const etqD = (d) => (!d ? '' : !d.diluida ? 'Sin diluir' : [ordinal(d), base10(d.D)].join(' · '))
 
 export function Recuento({ s }) {
   const { exp, upd, avisar } = s
@@ -138,7 +138,7 @@ export function Recuento({ s }) {
               <Campo label="1 · Cepa"><Sel value={f.muestra} onChange={(v) => setF({ ...f, muestra: v })} opciones={exp.cepas.map((c) => [c, c])} style={{ minWidth: 160 }} /></Campo>
               <Campo label="2 · Réplica"><Num value={f.replica} onChange={(v) => setF({ ...f, replica: v })} ancho={70} /></Campo>
               <Campo label="3 · Tiempo (h)"><Num value={f.t} onChange={(v) => setF({ ...f, t: v })} ancho={80} /></Campo>
-              <Campo label="4 · Dilución"><Sel value={String(f.k)} onChange={(v) => setF({ ...f, k: Number(v), k0: Number(v), paso: 0 })} opciones={ks.map((k) => [String(k), `${etqD(serieD[k])}${base10(serieD[k]?.D) ? `  ·  ${fraccion(serieD[k]?.D)}` : ""}`])} /></Campo>
+              <Campo label="4 · Dilución"><Sel value={String(f.k)} onChange={(v) => setF({ ...f, k: Number(v), k0: Number(v), paso: 0 })} opciones={ks.map((k) => [String(k), etqD(serieD[k])])} /></Campo>
               <Campo label="5 · Colonias">
                 <input ref={refN} inputMode="numeric" style={{ width: 90, background: color(Number(f.n)) }} value={f.n} onChange={(e) => setF({ ...f, n: e.target.value.replace(/\D/g, '') })} placeholder="n" />
               </Campo>
@@ -211,7 +211,7 @@ export function Recuento({ s }) {
                     </>) : <td colSpan={3} className="ayuda">Suspensión de partida (sin diluir)</td>}
                     <td className="num">{fin(d.D) ? `1:${String(redondo(d.D)).replace(/\B(?=(\d{3})+(?!\d))/g, '\u202F')}` : '—'}</td>
                     <td className="num">{fraccion(d.D)}</td>
-                    <td className="num"><b>{base10(d.D) || '–'}</b></td>
+                    <td className="num"><b>{base10(d.D)}</b></td>
                     <td>{d.propio && <button className="fantasma icono" aria-label="Volver a los volúmenes generales" data-tip="Volver a los volúmenes generales" onClick={() => setU((uu) => { const ps = { ...(uu.pasos || {}) }; delete ps[d.k]; return { pasos: ps } })}><Icono n="refrescar" size={14} /></button>}</td>
                   </tr>
                 ))}</tbody>

@@ -320,23 +320,29 @@ export function Grafico(props) {
           })}
         </g>
         {/* valores sobre los puntos (fuera del recorte para que no se corten) */}
-        {series.filter((s) => s.etiqueta).map((s) => {
-          const f = s.der ? pz : py
-          let previa = null   // etiqueta anterior de la serie: si se superponen, la siguiente sube para que se lean las dos
-          return s.data.filter((d) => fin(d.y) && dentro(d.x)).map((d, i) => {
-            const t = s.etiqueta(d)
-            if (!t) return null
-            // el texto no se sale del área del gráfico: se corre hacia adentro en los extremos (si no, pisa el eje o se recorta)
-            const anchoT = String(t).length * e.tamValores * 0.58
+        {(() => {
+          // Etiquetas de TODAS las series juntas: cada una prueba arriba del punto, después abajo y, si sigue pisando a otra ya
+          // ubicada (de cualquier serie), sube de a un renglón. Así dos cepas con valores parecidos no se superponen.
+          const h = e.tamValores * 1.15, puestas = [], out = []
+          const choca = (b) => puestas.some((p) => b.x0 < p.x1 + 2 && b.x1 > p.x0 - 2 && b.y0 < p.y1 && b.y1 > p.y0)
+          const cand = series.filter((s) => s.etiqueta).flatMap((s) => {
+            const f = s.der ? pz : py
+            return s.data.filter((d) => fin(d.y) && dentro(d.x)).map((d, i) => ({ s, d, i, t: s.etiqueta(d), f }))
+          }).filter((c) => c.t).sort((a, b) => a.d.x - b.d.x || a.f(a.d.y) - b.f(b.d.y))
+          for (const { s, d, i, t: txt, f } of cand) {
+            const anchoT = String(txt).length * e.tamValores * 0.58
             const xmin = L + 3 + anchoT / 2, xmax = W - R - 3 - anchoT / 2
             const X = xmin <= xmax ? Math.min(xmax, Math.max(xmin, px(d.x))) : (L + W - R) / 2
-            let Y = (fin(d.hi) && s.errores ? f(d.hi) : f(d.y)) - 7
-            if (Y < TOP + e.tamValores) Y = (fin(d.lo) && s.errores ? f(d.lo) : f(d.y)) + e.tamValores + 6   // sin lugar arriba: debajo del punto
-            if (previa && X - anchoT / 2 < previa.x1 + 2 && Math.abs(Y - previa.Y) < e.tamValores * 1.1) Y = previa.Y - e.tamValores * 1.2
-            previa = { x1: X + anchoT / 2, Y }
-            return <text key={s.id + 'v' + i} x={X} y={Y} textAnchor="middle" fontSize={e.tamValores} fill={s.color} fontWeight="500" stroke={e.fondo === 'blanco' ? '#fff' : T.panel} strokeWidth="3" paintOrder="stroke">{t}</text>
-          })
-        })}
+            const arriba = (fin(d.hi) && s.errores ? f(d.hi) : f(d.y)) - 7, abajo = (fin(d.lo) && s.errores ? f(d.lo) : f(d.y)) + e.tamValores + 6
+            const caja = (Y) => ({ x0: X - anchoT / 2, x1: X + anchoT / 2, y0: Y - e.tamValores, y1: Y + 2 })
+            const opciones = [arriba, abajo, ...[1, 2, 3, 4].map((k) => arriba - k * h), ...[1, 2, 3].map((k) => abajo + k * h)]
+              .filter((Y) => Y >= TOP + e.tamValores && Y <= H - B - 2)
+            const Y = opciones.find((y) => !choca(caja(y))) ?? opciones[0] ?? arriba
+            puestas.push(caja(Y))
+            out.push(<text key={s.id + 'v' + i} x={X} y={Y} textAnchor="middle" fontSize={e.tamValores} fill={s.color} fontWeight="500" stroke={e.fondo === 'blanco' ? '#fff' : T.panel} strokeWidth="3" paintOrder="stroke">{txt}</text>)
+          }
+          return out
+        })()}
         {hover && <circle cx={hover.X} cy={hover.Y} r="6" fill="none" stroke={T.acento} strokeWidth="1.6" pointerEvents="none" />}
         {conLeyenda && nomLeyenda.map((s, i) => {
           const fx = leyDer ? W - anchoLey + 6 : L + (i % colLey) * colW

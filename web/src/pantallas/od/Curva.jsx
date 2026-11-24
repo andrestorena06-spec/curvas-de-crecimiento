@@ -184,7 +184,7 @@ OD = ${fx(10 ** a.c.pred10(x), 4)}` })) })
         )}
         <GrupoModeloOd s={s} botonFases={<BotonCinta simbolo="▥" texto="Fases" activo={fases && unaCepa} deshabilitado={!unaCepa} onClick={() => setFases(!fases)} tip={unaCepa ? 'Mostrar u ocultar las fases (lag, exponencial, estacionaria) de la cepa\nCon Baranyi y Roberts o Huang las fases las fija el modelo; con Linealizar log₁₀ el tramo se elige en «Revisión de la OD», con «Fases…» en la curva de cada cepa' : 'Las fases son distintas en cada cepa: dejá una sola cepa visible para verlas'} />} />
         {s.porCepa && (
-          <Grupo titulo="Ventana de μmax">
+          <Grupo titulo="Ventana exponencial">
             <OpcionesCinta valor={s.modoCurva} onChange={(v) => s.setAj('placas_curva', v)} opciones={[['puntos', 'Sin promediar', '⋮', null, 'Por defecto: μmax de la ventana, su error, OD₀ y lag salen de la regresión con todos los pocillos; K y AUC, de la media. Baranyi y Roberts y Huang se ajustan siempre a la media de cada tiempo'], ['media', 'Promediada', 'x̄', null, 'Los parámetros se calculan sobre la media de los pocillos aceptados en cada tiempo']]} />
           </Grupo>
         )}

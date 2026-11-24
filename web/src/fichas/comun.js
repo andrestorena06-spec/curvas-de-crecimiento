@@ -3,7 +3,7 @@
 import { finito, media } from '../calculo/comun/analisis.js'
 import { AYUDA, PARAMS } from '../app/ayuda.js'
 import { N_MIN_EEM, resumenReplicas } from '../calculo/comun/estadistica.js'
-import { fs, fx, sci } from '../comun/utils.js'
+import { fs, fx, sci, potencia10 } from '../comun/utils.js'
 
 // ---------- formato ----------
 export { sci }
@@ -12,7 +12,7 @@ export const f2 = (x, d = 2) => fx(x, d)        // decimales fijos
 export const v = (t, c) => ({ v: String(t), c }) // variable coloreada
 export const hs = (t) => `${fx(t, 2)} h`
 // dilución: entera (1/125, 1/15.625) mientras se pueda leer; si no, en potencia de 10
-export const dil = (D) => (Math.abs(D - 1) < 1e-9 ? 'sin diluir' : Math.abs(D - Math.round(D)) < 1e-6 && D < 1e7 ? `1/${String(Math.round(D)).replace(/\B(?=(\d{3})+(?!\d))/g, '\u202F')}` : `1/${sci(D, 2)}`)
+export const dil = (D) => (Math.abs(D - 1) < 1e-9 ? 'sin diluir' : potencia10(1 / D))   // en base 10: 8 × 10⁻³
 export const avisosDe = (r) => String(r?.aviso || '').split('; ').filter(Boolean)
 
 // ---------- media ± error de varios valores (réplicas) ----------

@@ -306,3 +306,9 @@
 .menu-cinta .campo { margin: 0; }
 .menu-cinta-columnas { display: flex; gap: 22px; flex-wrap: wrap; align-items: flex-start; }
 .menu-cinta-columnas > .menu-cinta-seccion { border-top: 0 !important; padding-top: 0 !important; } .menu-cinta-columnas { border-top: 1px solid var(--borde); padding-top: 8px; }
+
+/* botón flotante «Copiar tabla» (ui/copiarTabla.js): aparece sobre la esquina de la tabla bajo el mouse */
+.boton-copiar-tabla { position: fixed; z-index: 55; display: none; align-items: center; gap: 5px; padding: 3px 9px; font-size: 12.5px; color: var(--acento-fuerte); background: var(--panel); border: 1px solid var(--borde2); border-radius: 7px; box-shadow: var(--sombra); cursor: pointer; }
+.boton-copiar-tabla.visible { display: inline-flex; }
+.boton-copiar-tabla:hover { background: var(--acento-suave); }
+@media print { .boton-copiar-tabla { display: none !important; } }

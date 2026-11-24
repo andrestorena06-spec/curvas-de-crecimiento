@@ -9,7 +9,7 @@ import { Encabezado, Num, Vacio } from '../../ui/base.jsx'
 import { BotonCinta, CampoCinta, Cinta, Grupo, OpcionesCinta } from '../../ui/cinta.jsx'
 import { GrupoMostrar, conEtiquetas, textoMostrar, useMostrar } from '../../ui/mostrar.jsx'
 import { Grafico } from '../../ui/graficos/grafico.jsx'
-import { fx, sci } from '../../comun/utils.js'
+import { fx, potenciaEje, rotuloPotencia, sci, fs, parCientifico, textoPar } from '../../comun/utils.js'
 import { mediaPorTiempo } from '../../calculo/od/medias.js'
 import { SelectorCepas, cepasOcultas } from '../../ui/cepas.jsx'
 import { Valor } from '../../fichas/FichaCalculo.jsx'
@@ -91,11 +91,11 @@ export function Combinado({ s }) {
   const logOd = escalaOd !== 'lineal'
   const trOd = logOd ? (v) => (v > 0 ? Math.log10(v) : NaN) : (v) => v
   // la misma escala rige las UFC (log₁₀ o UFC/mL ÷ 10^pot) y el eje de la calibración
-  const potU = !logOd && ufcRes?.hay ? Math.floor(Math.log10(Math.max(...ufcRes.res.map((r) => valorUfc(r, centroUfc(s.exp.aj))).filter(finito)))) : 0
+  const potU = !logOd && ufcRes?.hay ? potenciaEje(s.estiloGrafico('calibracion'), Math.max(...ufcRes.res.map((r) => valorUfc(r, centroUfc(s.exp.aj))).filter(finito))) : 0
   const kU = logOd ? 1 : 10 ** potU
   const uv = (ylog) => (logOd ? ylog : 10 ** ylog / kU)
   const modoU = logOd ? 'log10' : 'lineal'
-  const yTxtU = logOd ? 'log₁₀ UFC/mL' : `UFC/mL${potU ? ` (× 10^${potU})` : ''}`
+  const yTxtU = logOd ? 'log₁₀ UFC/mL' : rotuloPotencia('UFC/mL', potU)
   const verRep = !!mo.replicas
   const nomErr = { sd: 'DE', sem: 'EEM', ic95: 'IC 95 %' }[tipoErr] || 'DE'
   // error de las UFC: el tipo elegido (DE, EEM o IC 95 %) de las UFC/mL de las réplicas
@@ -140,7 +140,7 @@ export function Combinado({ s }) {
     data: pv.filter((p) => p.Muestra === m && p.usado === uso && finito(xv(p.OD))).map((p) => {
       const e = errorUfc(p._ufc, modoU, tipoErr, cen)
       return { x: xv(p.OD), y: logOd ? p.log10_UFC : p.UFC_mL / kU, lo: e.lo / kU, hi: e.hi / kU, xlo: finito(p.OD_err) ? xv(p.OD - p.OD_err) : NaN, xhi: finito(p.OD_err) ? xv(p.OD + p.OD_err) : NaN,
-        valor: textoMostrar(mo, logOd ? fx(p.log10_UFC, 2) : sci(p.UFC_mL), errorTextoUfc(e, !logOd)),
+        valor: (() => { const enEje = !logOd && potU !== 0 && s.estiloGrafico('calibracion').valoresEnEje !== false; if (!logOd && !enEje && !e.rango) return textoPar(parCientifico(p.UFC_mL, e.err), !!mo.valor, !!mo.error); return textoMostrar(mo, logOd ? fx(p.log10_UFC, 2) : enEje ? fs(p.UFC_mL / kU, 3) : sci(p.UFC_mL), errorTextoUfc(e, !logOd, enEje ? kU : null)) })(),
         key: p.clave,
         tip: `${m} · T = ${p.T_h} h${p.fase ? ` · ${FASE[p.fase]}` : ''}\n${uso ? 'Usado' : 'No usado'} en la recta${p.manual ? ' (elegido a mano)' : ''} · clic para ${uso ? 'excluirlo' : 'incluirlo'}\nOD = ${fx(p.OD, 3)}${finito(p.OD_err) ? ` ± ${fx(p.OD_err, 3)} (${nomErr})` : ''}${p.OD_interpolada ? ' (interpolada)' : ''}\n${tipValorUfc(p._ufc, cen, tipoErr).join('\n')}` }
     }) })))

@@ -6,7 +6,7 @@
 // ============================================================
 import { desvio, finito, media } from '../comun/analisis.js'
 import { ERRORES, errorElegido, resumenReplicas } from '../comun/estadistica.js'
-import { fx, sci } from '../../comun/utils.js'
+import { fx, sci, fs } from '../../comun/utils.js'
 
 
 // factor que hay que aplicar a la columna j respecto de la suspensión original: D(j) = mult × f^j
@@ -200,8 +200,9 @@ export function errorUfc(r, escala = 'log10', tipo = 'sd') {
   return { m: eg.mLog, lo: finito(eg.e) ? eg.loLog : NaN, hi: finito(eg.e) ? eg.hiLog : NaN, err: NaN, rango: true, cv, n: est.n, nBajo: eg.bajo }
 }
 // solo el error, para escribirlo sobre el punto: «± error» en lineal; «[log₁₀ inf – log₁₀ sup]» en log₁₀
-export function errorTextoUfc(e, lin) {
-  const f = (v) => (lin ? sciUfc(v) : v.toFixed(2).replace('.', ','))
+// k: si se da, los valores van divididos por k (la escala del eje, × 10ⁿ) y con 3 cifras significativas
+export function errorTextoUfc(e, lin, k = null) {
+  const f = (v) => (lin ? (k ? fs(v / k, 3) : sciUfc(v)) : v.toFixed(2).replace('.', ','))
   if (e.rango) return finito(e.hi) ? `[${finito(e.lo) ? f(e.lo) : '–'} – ${f(e.hi)}]` : ''
   return finito(e.err) ? `± ${f(e.err)}` : ''
 }

@@ -5,14 +5,22 @@
 // Cada número abre SOLO su cuenta: ficha(fila, foco) con foco 'media' | 'error' | 'rango' | 'log' | 'rangolog'.
 // ============================================================
 import { finito } from '../calculo/comun/analisis.js'
-import { fx } from '../comun/utils.js'
+import { fx, parCientifico, porPotencia } from '../comun/utils.js'
 import { Valor } from '../fichas/FichaCalculo.jsx'
 
 const L = (x) => (finito(x) && x > 0 ? Math.log10(x) : NaN)
 const fl = (x) => (finito(x) ? fx(x, 3) : '–')
 
-// filas: [{ clave, cepa, color, t (h), n, m, e }] con m y e en la magnitud (OD o UFC/mL); fmt: formato de la magnitud
-export function TablaMediaTiempo({ titulo, filas, unidad, etqErr, fmt, ficha, nota }) {
+// filas: [{ clave, cepa, color, t (h), n, m, e }] con m y e en la magnitud (OD o UFC/mL); fmt: formato del valor sin error.
+// cientifico: valor, error y rango con la potencia de 10 del valor (UFC/mL); sin él, sin potencia (OD). En los dos casos
+// el valor y el error llevan los mismos decimales: los que dejan el error con 2 cifras significativas.
+export function TablaMediaTiempo({ titulo, filas, unidad, etqErr, fmt, ficha, nota, cientifico = false }) {
+  const par = (f) => {
+    if (cientifico) return parCientifico(f.m, f.e)
+    const p = parCientifico(f.m, f.e)   // mismos decimales, sin potencia
+    return finito(p.d) ? { v: fx(f.m, p.d + Math.max(0, -p.pot)), e: fx(f.e, p.d + Math.max(0, -p.pot)), pot: 0, d: p.d + Math.max(0, -p.pot) } : { v: fmt(f.m), e: '', pot: 0, d: NaN }
+  }
+  const enPar = (p, x) => fx(x / 10 ** p.pot, p.d)
   const c = (f, foco, txt) => <Valor f={() => ficha(f, foco)}>{txt}</Valor>
   return (
     <div className="tarjeta">
@@ -29,14 +37,15 @@ export function TablaMediaTiempo({ titulo, filas, unidad, etqErr, fmt, ficha, no
         </tr></thead>
         <tbody>{filas.map((f) => {
           const ok = finito(f.e)
+          const p = par(f)
           return (
             <tr key={f.clave}>
               <td><i className="punto" style={{ background: f.color, marginRight: 6 }} />{f.cepa}</td>
               <td className="num">{fx(f.t, 2)}</td>
               <td className="num" data-tip={f.n < 3 ? 'Con menos de 3 réplicas el error tiene poca base' : undefined}>{f.n}</td>
-              <td className="num"><b>{c(f, 'media', fmt(f.m))}</b></td>
-              <td className="num">{ok ? c(f, 'error', `± ${fmt(f.e)}`) : f.n > 1 ? 'n < 3' : '–'}</td>
-              <td className="num">{ok ? c(f, 'rango', `${fmt(f.m - f.e)} – ${fmt(f.m + f.e)}`) : '–'}</td>
+              <td className="num"><b>{c(f, 'media', ok && p.e ? porPotencia(p.v, p.pot) : fmt(f.m))}</b></td>
+              <td className="num">{ok && p.e ? c(f, 'error', porPotencia(`± ${p.e}`, p.pot)) : f.n > 1 ? 'n < 3' : '–'}</td>
+              <td className="num">{ok && p.e ? c(f, 'rango', porPotencia(p.pot ? `(${enPar(p, f.m - f.e)} – ${enPar(p, f.m + f.e)})` : `${enPar(p, f.m - f.e)} – ${enPar(p, f.m + f.e)}`, p.pot)) : '–'}</td>
               <td className="num">{c(f, 'log', fl(L(f.m)))}</td>
               <td className="num">{ok ? c(f, 'rangolog', finito(L(f.m - f.e)) ? `${fl(L(f.m - f.e))} – ${fl(L(f.m + f.e))}` : finito(L(f.m + f.e)) ? `≤ ${fl(L(f.m + f.e))}` : '–') : '–'}</td>
             </tr>

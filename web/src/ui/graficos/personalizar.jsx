@@ -2,10 +2,13 @@
 // Cada gráfico guarda su estilo en el experimento (exp.graficos[id]); los colores de las cepas son comunes a todos.
 import { Campo, Check, Num, Sel } from '../base.jsx'
 import { estiloGraficoDef } from './grafico.jsx'
+import { superindice } from '../../comun/utils.js'
 
 const FUENTES = [['IBM Plex Sans', 'IBM Plex Sans'], ['Segoe UI', 'Segoe UI'], ['Arial', 'Arial'], ['Calibri', 'Calibri'], ['Times New Roman', 'Times New Roman'], ['Georgia', 'Georgia']]
 
 // gráficos con valores escritos sobre los puntos (se elige acá, no en la cinta)
+// gráficos que pueden mostrar UFC/mL en escala lineal: llevan la opción de potencia de 10 del eje Y
+const CON_POTENCIA = ['curvaUfc', 'calibracion']
 export function PanelPersonalizar({ s, id, ejeDerecho = false, cepas }) {
   const e = { ...estiloGraficoDef(), ...(s.exp.graficos?.[id] || {}) }
   const set = (k, v) => s.setEstiloGrafico(id, { [k]: v })
@@ -48,6 +51,16 @@ export function PanelPersonalizar({ s, id, ejeDerecho = false, cepas }) {
         <Campo label="X máximo"><Num value={e.xmax} placeholder="auto" onChange={(v) => set('xmax', v)} /></Campo>
         <Campo label="Y mínimo"><Num value={e.ymin} placeholder="auto" onChange={(v) => set('ymin', v)} /></Campo>
         <Campo label="Y máximo"><Num value={e.ymax} placeholder="auto" onChange={(v) => set('ymax', v)} /></Campo>
+        {CON_POTENCIA.includes(id) && (
+          <Campo label="Escala del eje Y (UFC/mL lineal)" ayuda="Potencia de 10 por la que se dividen los valores del eje Y: × 10⁷, × 10⁸… «Automática» usa la del mayor valor. Solo con el eje en escala lineal.">
+            <Sel value={e.potY === undefined || e.potY === null ? '' : String(e.potY)} onChange={(v) => set('potY', v === '' ? '' : Number(v))}
+              opciones={[['', 'Automática'], ['0', 'Sin potencia (UFC/mL)'], ...Array.from({ length: 12 }, (_, i) => [String(i + 1), `× 10${superindice(i + 1)}`])]} />
+          </Campo>
+        )}
+        {CON_POTENCIA.includes(id) && (
+          <Check label="Valores sobre los puntos en la escala del eje" checked={e.valoresEnEje !== false} onChange={(v) => set('valoresEnEje', v)}
+            ayuda="Con el eje en × 10⁸, el punto 1,26 × 10⁹ se rotula 12,6 (como se lee en el eje). Sin marcar, en notación científica." />
+        )}
         <Campo label="Alto del gráfico (px)"><Num value={e.alto} placeholder="auto" onChange={(v) => set('alto', v)} /></Campo>
       </div>
       <Check label="Mostrar grilla" checked={e.grilla} onChange={(v) => set('grilla', v)} />

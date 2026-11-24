@@ -1,6 +1,7 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './app/App.jsx'
+import { activarCopiaTablas } from './ui/copiarTabla.js'
 import '@fontsource/ibm-plex-sans/latin-400.css'
 import '@fontsource/ibm-plex-sans/latin-500.css'
 import '@fontsource/ibm-plex-sans/latin-600.css'
@@ -29,4 +30,5 @@ class Falla extends React.Component {
     )
   }
 }
+activarCopiaTablas()   // tablas copiadas con formato de publicación
 createRoot(document.getElementById('root')).render(<React.StrictMode><Falla><App /></Falla></React.StrictMode>)

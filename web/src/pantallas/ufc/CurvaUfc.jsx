@@ -19,7 +19,7 @@ import { SelectorCepas, cepasOcultas } from '../../ui/cepas.jsx'
 import { Grafico } from '../../ui/graficos/grafico.jsx'
 import { Valor } from '../../fichas/FichaCalculo.jsx'
 import { fichaPrediccionUfc, fichaUfcTiempo } from '../../fichas/index.js'
-import { fx, sci } from '../../comun/utils.js'
+import { fx, potenciaEje, rotuloPotencia, sci, fs, parCientifico, textoPar } from '../../comun/utils.js'
 import { GrupoModeloUfc, SeccionUfc } from './ParamUfc.jsx'
 
 // ficha del valor de una cepa en un tiempo, con las réplicas que no entran y las estimadas
@@ -55,7 +55,7 @@ export function CurvaUfc({ s }) {
   const todas = [...new Set(res.map((r) => r.Muestra))]
   const muestras = todas.filter((m) => !cepasOcultas(exp).includes(m))
   const lin = escala === 'lineal'
-  const pot = lin ? Math.floor(Math.log10(Math.max(...res.map((r) => r.UFC_mL)))) : 0
+  const pot = lin ? potenciaEje(s.estiloGrafico('curvaUfc'), Math.max(...res.map((r) => r.UFC_mL))) : 0
   const mostrarMedias = mo.puntos || mo.barras || conEtiquetas(mo)
   const series = (mostrarMedias ? muestras : []).map((m) => ({
     id: m, cepa: m, nombre: m, color: s.colores[m], linea: false, puntos: !!mo.puntos, forma: 'cuadrado', radio: 4, ancho: 2, errores: !!mo.barras,
@@ -63,7 +63,10 @@ export function CurvaUfc({ s }) {
     data: res.filter((r) => r.Muestra === m).sort((a, b) => a.T_h - b.T_h).map((r) => {
       const e = errorUfc(r, lin ? 'lineal' : 'log10', tipoErr)
       const k = lin ? 10 ** pot : 1
-      const valor = textoMostrar(mo, lin ? sci(e.m) : fx(e.m, 2), errorTextoUfc(e, lin))
+      // valores en la escala del eje (opción de Personalizar, activa por defecto): 12,6 en vez de 1,26 × 10⁹ si el eje es × 10⁸
+      const enEje = lin && pot !== 0 && s.estiloGrafico('curvaUfc').valoresEnEje !== false
+      const valor = lin && !enEje && !e.rango ? textoPar(parCientifico(e.m, e.err), !!mo.valor, !!mo.error)
+        : textoMostrar(mo, lin ? (enEje ? fs(e.m / k, 3) : sci(e.m)) : fx(e.m, 2), errorTextoUfc(e, lin, enEje ? k : null))
       return { x: r.T_h, y: e.m / k, lo: e.lo / k, hi: e.hi / k, valor, key: `${m}|${r.T_h}`,
         tip: [`${m} · T = ${r.T_h} h`, ...tipValorUfc(r, null, tipoErr), 'Clic: cómo se calculó'].join('\n') }
     }),
@@ -131,7 +134,7 @@ export function CurvaUfc({ s }) {
       {pred.on && preds.some((x) => x.p.ok && x.p.sinMeseta) && <p className="aviso-caja"><b>Predicción sin meseta:</b> {preds.filter((x) => x.p.ok && x.p.sinMeseta).map((x) => x.m).join(', ')}: los recuentos no llegan a la fase estacionaria, así que el nivel máximo no se puede estimar y la curva extiende el crecimiento hasta un tope arbitrario (2,2 log₁₀ sobre el máximo medido). Indicá «N máx» en la cinta para una predicción realista.</p>}
       {avisosSuave.length > 0 && <p className="ayuda">{avisosSuave.join(' · ')}.</p>}
       <div className="tarjeta">
-        <Grafico series={series} yTxt={lin ? `UFC/mL${pot ? ` (× 10^${pot})` : ''}` : 'log₁₀ UFC/mL'} alto={420} nombre={`ufc_${exp.nombre}`} titulo={exp.nombre} ceroY={lin} estilo={s.estiloGrafico('curvaUfc')} idEstilo="curvaUfc" onPuntoClick={abrir} zonas={zonas} />
+        <Grafico series={series} yTxt={lin ? rotuloPotencia('UFC/mL', pot) : 'log₁₀ UFC/mL'} alto={420} nombre={`ufc_${exp.nombre}`} titulo={exp.nombre} ceroY={lin} estilo={s.estiloGrafico('curvaUfc')} idEstilo="curvaUfc" onPuntoClick={abrir} zonas={zonas} />
         {fases && unaCepa && (trF?.ventana ? <p className="ayuda" style={{ marginTop: 6 }}><b>{muestras[0]}</b>: lag hasta {fx(trF.ventana[0], 2)} h · fase exponencial de {fx(trF.ventana[0], 2)} a {fx(trF.ventana[1], 2)} h ({trF.origen === 'modelo' ? `la fija el modelo ${MODELOS_UFC[modelo]}: velocidad ≥ ${fx(100 * fraccionExp(exp.aj), 0)} % de μ máx` : trF.origen === 'manual' ? 'tramo elegido a mano' : trF.origen === 'respaldo' ? 'el modelo no ajustó: tramo automático de la recta' : 'automático'}) · {trF.ventana[1] >= Math.max(...ufcRes.res.filter((r) => r.Muestra === muestras[0]).map((r) => r.T_h)) - 1e-6 ? 'sin fase estacionaria en los datos' : `estacionaria desde ${fx(trF.ventana[1], 2)} h`}.</p> : <p className="ayuda" style={{ marginTop: 6 }}>{trF?.aviso || `${muestras[0]}: sin fase exponencial detectada.`}</p>)}
       </div>
       <SeccionUfc s={s} />
@@ -154,7 +157,7 @@ export function CurvaUfc({ s }) {
           <p className="ayuda" style={{ marginTop: 6 }}>Continua: ajuste en el rango medido · trazos: extrapolación del modelo (depende de N máx).</p>
         </div>
       )}
-      <TablaMediaTiempo titulo="UFC/mL por cepa y tiempo" unidad="UFC/mL" etqErr={etqErr} fmt={(x) => sci(x)}
+      <TablaMediaTiempo titulo="UFC/mL por cepa y tiempo" unidad="UFC/mL" etqErr={etqErr} fmt={(x) => sci(x)} cientifico
         filas={res.filter((r) => muestras.includes(r.Muestra)).map((r) => { const est = estadisticaUfc(r), e = errorUfc(r, 'lineal', tipoErr); return { clave: `${r.Muestra}|${r.T_h}`, cepa: r.Muestra, color: s.colores[r.Muestra], t: r.T_h, n: est.n, m: est.m, e: e.err } })}
         ficha={(f, foco) => fichaTiempoUfc(ufcRes, exp.aj, f.cepa, f.t, foco)}
         nota="Para cada réplica UFC/mL = C · D / V; el valor de cada tiempo es la media aritmética de las réplicas, con su error y su rango; en log₁₀, el log₁₀ de esa media y de los extremos del rango (la escala del gráfico no cambia las cuentas). Las réplicas con 0 colonias cuentan como 0. Con menos de 3 réplicas no hay EEM ni IC 95 %." />
